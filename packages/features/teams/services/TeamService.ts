@@ -80,11 +80,9 @@ class TeamService {
   }
 
   async addMemberByEmail(actor: Actor, teamId: number, input: { email: string; role: MembershipRole }) {
-    await this.assertTeamRole(actor, teamId, TEAM_ADMIN_ROLES, "Only team admins can add members");
+    // Product decision: only instance admins add people to teams; team admins manage existing members.
+    this.assertInstanceAdmin(actor, "Only instance admins can add members to a team");
     await this.findTeamOrThrow(teamId);
-    if (input.role === MembershipRole.OWNER) {
-      await this.assertTeamRole(actor, teamId, OWNER_ONLY, "Only an owner can add another owner");
-    }
 
     const user = await this.deps.userRepository.findByEmail({ email: input.email });
     if (!user) {

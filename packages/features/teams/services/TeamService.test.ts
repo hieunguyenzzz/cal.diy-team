@@ -264,34 +264,40 @@ describe("TeamService", () => {
       userRepository.findByEmail.mockResolvedValue({ id: 5 });
     });
 
-    it("forbids a MEMBER", async () => {
-      givenMemberships({ 2: { role: MembershipRole.MEMBER } });
+    it.each([
+      MembershipRole.MEMBER,
+      MembershipRole.ADMIN,
+      MembershipRole.OWNER,
+    ])("forbids a team %s: only instance admins add people to teams", async (role) => {
+      givenMemberships({ 2: { role } });
 
       await expectError(
         service.addMemberByEmail(actor, 10, { email: "new@example.com", role: MembershipRole.MEMBER }),
         ErrorCode.Forbidden
       );
+      expect(userRepository.findByEmail).not.toHaveBeenCalled();
+      expect(membershipRepository.createAccepted).not.toHaveBeenCalled();
     });
 
-    it("adds an existing user as an accepted member", async () => {
-      givenMemberships({ 2: { role: MembershipRole.ADMIN } });
-
-      await service.addMemberByEmail(actor, 10, { email: "New@Example.com", role: MembershipRole.MEMBER });
+    it.each([
+      MembershipRole.MEMBER,
+      MembershipRole.ADMIN,
+      MembershipRole.OWNER,
+    ])("lets the instance admin add an existing user as an accepted %s", async (role) => {
+      await service.addMemberByEmail(instanceAdmin, 10, { email: "New@Example.com", role });
 
       expect(userRepository.findByEmail).toHaveBeenCalledWith({ email: "New@Example.com" });
-      expect(membershipRepository.createAccepted).toHaveBeenCalledWith({
-        teamId: 10,
-        userId: 5,
-        role: MembershipRole.MEMBER,
-      });
+      expect(membershipRepository.createAccepted).toHaveBeenCalledWith({ teamId: 10, userId: 5, role });
     });
 
     it("points an unknown email to the admin add-user page", async () => {
-      givenMemberships({ 2: { role: MembershipRole.ADMIN } });
       userRepository.findByEmail.mockResolvedValue(null);
 
       await expectError(
-        service.addMemberByEmail(actor, 10, { email: "nobody@example.com", role: MembershipRole.MEMBER }),
+        service.addMemberByEmail(instanceAdmin, 10, {
+          email: "nobody@example.com",
+          role: MembershipRole.MEMBER,
+        }),
         ErrorCode.NotFound,
         /\/settings\/admin\/users\/add/
       );
@@ -299,32 +305,28 @@ describe("TeamService", () => {
     });
 
     it("rejects a user who is already a member", async () => {
-      givenMemberships({ 2: { role: MembershipRole.ADMIN }, 5: { role: MembershipRole.MEMBER } });
+      givenMemberships({ 5: { role: MembershipRole.MEMBER } });
 
       await expectError(
-        service.addMemberByEmail(actor, 10, { email: "new@example.com", role: MembershipRole.MEMBER }),
+        service.addMemberByEmail(instanceAdmin, 10, {
+          email: "new@example.com",
+          role: MembershipRole.MEMBER,
+        }),
         ErrorCode.BadRequest,
         /already/i
       );
     });
 
-    it("lets only an OWNER or the instance admin add an OWNER", async () => {
-      givenMemberships({ 2: { role: MembershipRole.ADMIN } });
+    it("returns NotFound for a team that does not exist", async () => {
+      teamRepository.findById.mockResolvedValue(null);
+
       await expectError(
-        service.addMemberByEmail(actor, 10, { email: "new@example.com", role: MembershipRole.OWNER }),
-        ErrorCode.Forbidden
+        service.addMemberByEmail(instanceAdmin, 10, {
+          email: "new@example.com",
+          role: MembershipRole.MEMBER,
+        }),
+        ErrorCode.NotFound
       );
-
-      givenMemberships({ 2: { role: MembershipRole.OWNER } });
-      await service.addMemberByEmail(actor, 10, { email: "new@example.com", role: MembershipRole.OWNER });
-      expect(membershipRepository.createAccepted).toHaveBeenCalledTimes(1);
-
-      givenMemberships({});
-      await service.addMemberByEmail(instanceAdmin, 10, {
-        email: "new@example.com",
-        role: MembershipRole.OWNER,
-      });
-      expect(membershipRepository.createAccepted).toHaveBeenCalledTimes(2);
     });
   });
 
