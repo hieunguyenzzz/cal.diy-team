@@ -66,6 +66,13 @@ export class ScheduleRepository {
     return schedule;
   }
 
+  async findOwnersByIds({ ids }: { ids: number[] }) {
+    return this.prismaClient.schedule.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, userId: true },
+    });
+  }
+
   async findScheduleById({ id }: { id: number }) {
     const schedule = await this.prismaClient.schedule.findUnique({
       where: {

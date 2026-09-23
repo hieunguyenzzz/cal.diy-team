@@ -43,6 +43,13 @@ export class CredentialRepository {
     });
   }
 
+  async findOwnersByIds({ ids }: { ids: number[] }) {
+    return this.prismaClient.credential.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, userId: true, teamId: true },
+    });
+  }
+
   async findByIdWithDelegationCredential(id: number) {
     return this.prismaClient.credential.findUnique({
       where: { id },

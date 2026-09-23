@@ -225,3 +225,87 @@ describe("updateHandler ownership of referenced records", () => {
     expect(updateData()).toMatchObject({ title: "Mine" });
   });
 });
+
+describe("updateHandler host assignments", () => {
+  type Result<T extends (...args: never[]) => unknown> = Awaited<ReturnType<T>>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.hashedLink.findMany.mockResolvedValue([]);
+    prismaMock.eventType.update.mockResolvedValue({
+      slug: "event",
+      schedulingType: null,
+    } as unknown as Awaited<ReturnType<typeof prismaMock.eventType.update>>);
+    mockEventType(teamEventType);
+    // User 2 is an accepted member of team 10, so the existing membership check passes.
+    prismaMock.membership.findMany.mockResolvedValue([{ userId: 2 }] as unknown as Result<
+      typeof prismaMock.membership.findMany
+    >);
+    prismaMock.schedule.findMany.mockResolvedValue([]);
+    prismaMock.credential.findMany.mockResolvedValue([]);
+  });
+
+  const updateHosts = (hosts: unknown[]) =>
+    updateHandler({ ctx, input: { id: 1, teamId: 10, hosts } as UpdateOptions["input"] });
+  const createdHosts = () =>
+    (prismaMock.eventType.update.mock.calls[0][0].data.hosts as { create: Record<string, unknown>[] }).create;
+
+  it("rejects a host schedule that belongs to someone else", async () => {
+    prismaMock.schedule.findMany.mockResolvedValue([{ id: 5, userId: 3 }] as unknown as Result<
+      typeof prismaMock.schedule.findMany
+    >);
+
+    await expect(updateHosts([{ userId: 2, isFixed: false, scheduleId: 5 }])).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    expect(prismaMock.eventType.update).not.toHaveBeenCalled();
+  });
+
+  it("accepts the host's own schedule", async () => {
+    prismaMock.schedule.findMany.mockResolvedValue([{ id: 5, userId: 2 }] as unknown as Result<
+      typeof prismaMock.schedule.findMany
+    >);
+
+    await updateHosts([{ userId: 2, isFixed: false, scheduleId: 5 }]);
+    expect(createdHosts()[0]).toMatchObject({ userId: 2, scheduleId: 5 });
+    expect(prismaMock.schedule.findMany).toHaveBeenCalledWith({
+      where: { id: { in: [5] } },
+      select: { id: true, userId: true },
+    });
+  });
+
+  it("rejects a host location credential owned by another user and not by the team", async () => {
+    prismaMock.credential.findMany.mockResolvedValue([
+      { id: 7, userId: 3, teamId: null },
+    ] as unknown as Result<typeof prismaMock.credential.findMany>);
+
+    await expect(
+      updateHosts([{ userId: 2, isFixed: false, location: { type: "integrations:zoom", credentialId: 7 } }])
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(prismaMock.eventType.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the host", { id: 7, userId: 2, teamId: null }],
+    ["the event's team", { id: 7, userId: null, teamId: 10 }],
+  ])("accepts a host location credential owned by %s", async (_label, credential) => {
+    prismaMock.credential.findMany.mockResolvedValue([credential] as unknown as Result<
+      typeof prismaMock.credential.findMany
+    >);
+
+    await updateHosts([
+      { userId: 2, isFixed: false, location: { type: "integrations:zoom", credentialId: 7 } },
+    ]);
+    expect(createdHosts()[0]).toMatchObject({ location: { create: { credentialId: 7 } } });
+    expect(prismaMock.credential.findMany).toHaveBeenCalledWith({
+      where: { id: { in: [7] } },
+      select: { id: true, userId: true, teamId: true },
+    });
+  });
+
+  it("never writes a host profileId from input", async () => {
+    await updateHosts([{ userId: 2, isFixed: false, profileId: 99 }]);
+
+    expect(createdHosts()[0]).not.toHaveProperty("profileId");
+  });
+});
