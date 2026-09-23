@@ -4758,5 +4758,13 @@
   "teams_added_by_instance_admin": "An instance admin adds you to a team.",
   "team_created_successfully": "Team created",
   "all_teams": "All teams",
+  "only_team_admins_can_edit_profile": "Only team admins and owners can edit this profile.",
+  "team_logo_too_large": "The logo must be 2 MB or smaller.",
+  "delete_team": "Delete team",
+  "delete_team_description": "Deleting a team removes its members and event types. This can't be undone.",
+  "team_deleted_successfully": "Team deleted",
+  "team_upcoming_bookings_warning_one": "This team has {{count}} upcoming booking. It will be kept but detached from the team's event types.",
+  "team_upcoming_bookings_warning_other": "This team has {{count}} upcoming bookings. They will be kept but detached from the team's event types.",
+  "type_team_slug_to_confirm": "Type {{slug}} to confirm",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }

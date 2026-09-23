@@ -1,5 +1,5 @@
 import type { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
-import { ALL_ROLES, TEAM_ADMIN_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
+import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
 import { validateTeamLogo } from "@calcom/features/teams/lib/validateTeamLogo";
 import type { TeamProfileUpdate, TeamRepository } from "@calcom/features/teams/repositories/TeamRepository";
 import type { UserRepository } from "@calcom/features/users/repositories/UserRepository";
@@ -48,9 +48,18 @@ class TeamService {
     }));
   }
 
+  // Returns the caller's own role too, so the settings UI can decide editability from this one query.
   async getTeam(actor: Actor, teamId: number) {
-    await this.assertTeamRole(actor, teamId, ALL_ROLES, "Only team members can view the team");
-    return this.findTeamOrThrow(teamId);
+    const own = await this.deps.membershipRepository.findRoleAndAcceptedByUserIdAndTeamId({
+      userId: actor.userId,
+      teamId,
+    });
+    const role = own?.accepted ? own.role : null;
+    if (role === null && actor.userRole !== UserPermissionRole.ADMIN) {
+      throw ErrorWithCode.Factory.Forbidden("Only team members can view the team");
+    }
+    const team = await this.findTeamOrThrow(teamId);
+    return { ...team, role };
   }
 
   async createTeam(
