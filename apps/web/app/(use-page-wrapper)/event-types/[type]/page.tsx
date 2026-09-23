@@ -57,12 +57,7 @@ const ServerPage = async ({ params }: PageProps) => {
     throw new Error("This event type does not exist");
   }
 
-  // Fetch permissions for the event type's team
-  const permissions = {
-    eventTypes: { canRead: true, canCreate: true, canUpdate: true, canDelete: true },
-  };
-
-  return <EventTypeWebWrapper data={data} id={eventTypeId} permissions={permissions} />;
+  return <EventTypeWebWrapper data={data} id={eventTypeId} />;
 };
 
 export default ServerPage;

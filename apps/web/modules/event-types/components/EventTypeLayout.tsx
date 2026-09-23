@@ -1,5 +1,6 @@
 import type { EventTypeSetupProps, FormValues } from "@calcom/features/eventtypes/lib/types";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
+import type { UserPermissionRole } from "@calcom/prisma/enums";
 import { SchedulingType } from "@calcom/prisma/enums";
 import classNames from "@calcom/ui/classNames";
 import { Badge } from "@calcom/ui/components/badge";
@@ -24,6 +25,7 @@ import {
   EventTypeEmbedButton,
   EventTypeEmbedDialog,
 } from "@calcom/web/modules/embed/components/EventTypeEmbed";
+import { canDeleteEventType } from "@calcom/web/modules/event-types/lib/canDeleteEventTypes";
 import WebShell from "@calcom/web/modules/shell/Shell";
 import { LoaderIcon } from "@coss/ui/icons";
 import { Suspense, useMemo, useState } from "react";
@@ -39,7 +41,8 @@ type Props = {
   disableBorder?: boolean;
   formMethods: UseFormReturn<FormValues>;
   isUpdateMutationLoading?: boolean;
-  isUserOrganizationAdmin: boolean;
+  // Only the web app knows the instance role; platform atoms leave it out.
+  userRole?: UserPermissionRole | "INACTIVE_ADMIN" | null;
   bookerUrl: string;
   onDelete: (id: number) => void;
   isDeleting?: boolean;
@@ -57,7 +60,7 @@ function EventTypeSingleLayout({
   disableBorder,
   isUpdateMutationLoading,
   formMethods,
-  isUserOrganizationAdmin,
+  userRole,
   bookerUrl,
   onDelete,
   isDeleting,
@@ -71,11 +74,8 @@ function EventTypeSingleLayout({
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const hasPermsToDelete =
-    currentUserMembership?.role !== "MEMBER" ||
-    !currentUserMembership ||
-    formMethods.getValues("schedulingType") === SchedulingType.MANAGED ||
-    isUserOrganizationAdmin;
+  // Same rule as the server and the listing: team event types need ADMIN/OWNER or the instance admin.
+  const hasPermsToDelete = canDeleteEventType({ teamId: eventType.teamId, currentUserMembership, userRole });
 
   const isManagedEventType = false;
   const isChildrenManagedEventType = false;
@@ -198,7 +198,7 @@ function EventTypeSingleLayout({
                 )}
               </>
             )}
-            {!isChildrenManagedEventType && allowDelete && (
+            {!isChildrenManagedEventType && allowDelete && hasPermsToDelete && (
               <Button
                 color="destructive"
                 variant="icon"
@@ -240,7 +240,7 @@ function EventTypeSingleLayout({
                   {t("copy_link")}
                 </DropdownItem>
               </DropdownMenuItem>
-              {allowDelete && (
+              {allowDelete && hasPermsToDelete && (
                 <DropdownMenuItem className="focus:ring-muted">
                   <DropdownItem
                     type="button"
