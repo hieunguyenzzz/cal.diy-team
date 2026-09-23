@@ -2,6 +2,11 @@
 node_modules
 **/node_modules
 
+# Yarn's local package cache is gitignored and huge on dev machines; a fresh
+# CI checkout never has it, but excluding it here keeps local builds honest
+# too (SBS-579 - it was ballooning the .yarn COPY layer to 750MB+ locally).
+.yarn/cache
+
 # Build outputs
 .next
 **/.next
