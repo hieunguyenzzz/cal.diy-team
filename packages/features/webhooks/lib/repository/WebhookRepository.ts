@@ -399,9 +399,10 @@ export class WebhookRepository implements IWebhookRepository {
       },
     });
 
-    // user.teams holds only accepted memberships: every member may read, only admins may change.
+    // Team webhooks (secrets included) are for team admins only; user.teams holds accepted memberships.
     for (const membership of user.teams) {
-      const canManage = userRole === UserPermissionRole.ADMIN || TEAM_ADMIN_ROLES.includes(membership.role);
+      const isTeamAdmin = userRole === UserPermissionRole.ADMIN || TEAM_ADMIN_ROLES.includes(membership.role);
+      if (!isTeamAdmin) continue;
 
       webhookGroups.push({
         teamId: membership.team.id,
@@ -412,8 +413,8 @@ export class WebhookRepository implements IWebhookRepository {
         },
         webhooks: WebhookOutputMapper.toWebhookList(membership.team.webhooks.filter(filterWebhooks)),
         metadata: {
-          canModify: canManage,
-          canDelete: canManage,
+          canModify: true,
+          canDelete: true,
         },
       });
     }

@@ -72,18 +72,18 @@ describe("WebhookRepository team access", () => {
       } as unknown as Result<typeof prismaMock.user.findUnique>);
     });
 
-    it("shows every accepted team's webhooks but lets only ADMIN/OWNER modify or delete", async () => {
-      const { webhookGroups } = await repository.getFilteredWebhooksForUser({ userId: 1 });
+    it("shows team webhooks only for teams the caller administers", async () => {
+      const { webhookGroups, profiles } = await repository.getFilteredWebhooksForUser({ userId: 1 });
 
       const flagsByTeam = Object.fromEntries(
         webhookGroups.map((group) => [String(group.teamId), group.metadata])
       );
       expect(flagsByTeam).toEqual({
         null: { canModify: true, canDelete: true },
-        10: { canModify: false, canDelete: false },
         20: { canModify: true, canDelete: true },
         30: { canModify: true, canDelete: true },
       });
+      expect(profiles.map((profile) => profile.teamId)).toEqual([null, 20, 30]);
     });
 
     it("lets the instance admin modify and delete every team's webhooks", async () => {
