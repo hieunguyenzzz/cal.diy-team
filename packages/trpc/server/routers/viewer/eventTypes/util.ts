@@ -4,7 +4,6 @@ import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermi
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { markdownToSafeHTML } from "@calcom/lib/markdownToSafeHTML";
 import prisma from "@calcom/prisma";
-import type { MembershipRole } from "@calcom/prisma/enums";
 import { PeriodType } from "@calcom/prisma/enums";
 import type { CustomInputSchema } from "@calcom/prisma/zod-utils";
 import { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
@@ -90,17 +89,7 @@ export const eventOwnerProcedure = authedProcedure
     return next();
   });
 
-/**
- * Creates an event admin procedure with configurable permissions
- * @param permission - The specific permission required (e.g., "eventType.read", "eventType.update")
- * @param _fallbackRoles - Ignored: team roles per permission are fixed by TeamPermissionService.
- *   Kept so existing call sites compile.
- * @returns A procedure that checks the specified permission
- */
-export const createEventPbacProcedure = (
-  permission: PermissionString,
-  _fallbackRoles: MembershipRole[] = ["ADMIN", "OWNER"]
-) => {
+export const createEventPbacProcedure = (permission: PermissionString) => {
   return authedProcedure
     .input(
       z

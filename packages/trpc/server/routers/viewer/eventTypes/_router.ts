@@ -1,8 +1,6 @@
 import { z } from "zod";
 
 import { logP } from "@calcom/lib/perf";
-import { MembershipRole } from "@calcom/prisma/enums";
-
 import authedProcedure from "../../../procedures/authedProcedure";
 import { router } from "../../../trpc";
 import { ZDeleteInputSchema } from "./delete.schema";
@@ -101,7 +99,7 @@ export const eventTypesRouter = router({
 
   get,
 
-  delete: createEventPbacProcedure("eventType.delete", [MembershipRole.ADMIN, MembershipRole.OWNER])
+  delete: createEventPbacProcedure("eventType.delete")
     .input(ZDeleteInputSchema)
     .mutation(async ({ ctx, input }) => {
       const { deleteHandler } = await import("./delete.handler");
@@ -153,10 +151,7 @@ export const eventTypesRouter = router({
     });
   }),
 
-  getHostsForAvailability: createEventPbacProcedure("eventType.update", [
-    MembershipRole.ADMIN,
-    MembershipRole.OWNER,
-  ])
+  getHostsForAvailability: createEventPbacProcedure("eventType.update")
     .input(ZGetHostsForAvailabilityInputSchema)
     .query(async ({ ctx, input }) => {
       const { getHostsForAvailabilityHandler } = await import("./getHostsForAvailability.handler");
@@ -167,10 +162,7 @@ export const eventTypesRouter = router({
       });
     }),
 
-  getHostsForAssignment: createEventPbacProcedure("eventType.update", [
-    MembershipRole.ADMIN,
-    MembershipRole.OWNER,
-  ])
+  getHostsForAssignment: createEventPbacProcedure("eventType.update")
     .input(ZGetHostsForAssignmentInputSchema)
     .query(async ({ ctx, input }) => {
       const { getHostsForAssignmentHandler } = await import("./getHostsForAssignment.handler");
@@ -181,10 +173,7 @@ export const eventTypesRouter = router({
       });
     }),
 
-  exportHostsForWeights: createEventPbacProcedure("eventType.update", [
-    MembershipRole.ADMIN,
-    MembershipRole.OWNER,
-  ])
+  exportHostsForWeights: createEventPbacProcedure("eventType.update")
     .input(ZExportHostsForWeightsInputSchema)
     .query(async ({ ctx, input }) => {
       const { exportHostsForWeightsHandler } = await import("./exportHostsForWeights.handler");
@@ -195,10 +184,7 @@ export const eventTypesRouter = router({
       });
     }),
 
-  getChildrenForAssignment: createEventPbacProcedure("eventType.update", [
-    MembershipRole.ADMIN,
-    MembershipRole.OWNER,
-  ])
+  getChildrenForAssignment: createEventPbacProcedure("eventType.update")
     .input(ZGetChildrenForAssignmentInputSchema)
     .query(async ({ ctx, input }) => {
       const { getChildrenForAssignmentHandler } = await import("./getChildrenForAssignment.handler");
@@ -209,10 +195,7 @@ export const eventTypesRouter = router({
       });
     }),
 
-  getHostsWithLocationOptions: createEventPbacProcedure("eventType.update", [
-    MembershipRole.ADMIN,
-    MembershipRole.OWNER,
-  ])
+  getHostsWithLocationOptions: createEventPbacProcedure("eventType.update")
     .input(ZGetHostsWithLocationOptionsInputSchema)
     .query(async ({ ctx, input }) => {
       const { getHostsWithLocationOptionsHandler } = await import("./getHostsWithLocationOptions.handler");
@@ -223,10 +206,7 @@ export const eventTypesRouter = router({
       });
     }),
 
-  massApplyHostLocation: createEventPbacProcedure("eventType.update", [
-    MembershipRole.ADMIN,
-    MembershipRole.OWNER,
-  ])
+  massApplyHostLocation: createEventPbacProcedure("eventType.update")
     .input(ZMassApplyHostLocationInputSchema)
     .mutation(async ({ ctx, input }) => {
       const { massApplyHostLocationHandler } = await import("./massApplyHostLocation.handler");

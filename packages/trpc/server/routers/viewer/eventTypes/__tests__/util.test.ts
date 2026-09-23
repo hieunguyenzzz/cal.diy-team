@@ -70,17 +70,16 @@ describe("createEventPbacProcedure", () => {
       const procedure = createEventPbacProcedure("eventType.update");
       const middleware = getMiddleware(procedure);
 
-      await expect(
-        middleware({
-          ctx: mockCtx,
-          input: { id: 1 },
-          next: mockNext,
-          path: "test",
-          type: "mutation",
-          getRawInput: async () => ({}),
-          meta: undefined,
-        })
-      ).resolves.not.toThrow();
+      await middleware({
+        ctx: mockCtx,
+        input: { id: 1 },
+        next: mockNext,
+        path: "test",
+        type: "mutation",
+        getRawInput: async () => ({}),
+        meta: undefined,
+      });
+      expect(mockNext).toHaveBeenCalledTimes(1);
     });
 
     it("should allow assigned user to access personal event", async () => {
@@ -91,17 +90,16 @@ describe("createEventPbacProcedure", () => {
       const procedure = createEventPbacProcedure("eventType.update");
       const middleware = getMiddleware(procedure);
 
-      await expect(
-        middleware({
-          ctx: mockCtx,
-          input: { id: 1 },
-          next: mockNext,
-          path: "test",
-          type: "mutation",
-          getRawInput: async () => ({}),
-          meta: undefined,
-        })
-      ).resolves.not.toThrow();
+      await middleware({
+        ctx: mockCtx,
+        input: { id: 1 },
+        next: mockNext,
+        path: "test",
+        type: "mutation",
+        getRawInput: async () => ({}),
+        meta: undefined,
+      });
+      expect(mockNext).toHaveBeenCalledTimes(1);
     });
 
     it("should deny non-owner/non-assigned user from accessing personal event", async () => {
@@ -154,17 +152,16 @@ describe("createEventPbacProcedure", () => {
       const procedure = createEventPbacProcedure("eventType.update");
       const middleware = getMiddleware(procedure);
 
-      await expect(
-        middleware({
-          ctx: mockCtx,
-          input: { id: 1, users: [1] },
-          next: mockNext,
-          path: "test",
-          type: "mutation",
-          getRawInput: async () => ({}),
-          meta: undefined,
-        })
-      ).resolves.not.toThrow();
+      await middleware({
+        ctx: mockCtx,
+        input: { id: 1, users: [1] },
+        next: mockNext,
+        path: "test",
+        type: "mutation",
+        getRawInput: async () => ({}),
+        meta: undefined,
+      });
+      expect(mockNext).toHaveBeenCalledTimes(1);
     });
 
     it("should deny assigning other users to personal event", async () => {
@@ -206,23 +203,19 @@ describe("createEventPbacProcedure", () => {
     it("should allow team member with permission to access team event", async () => {
       mockPrisma.eventType.findUnique = vi.fn().mockResolvedValue(teamEvent);
 
-      const procedure = createEventPbacProcedure("eventType.update", [
-        MembershipRole.ADMIN,
-        MembershipRole.OWNER,
-      ]);
+      const procedure = createEventPbacProcedure("eventType.update");
       const middleware = getMiddleware(procedure);
 
-      await expect(
-        middleware({
-          ctx: mockCtx,
-          input: { id: 2 },
-          next: mockNext,
-          path: "test",
-          type: "mutation",
-          getRawInput: async () => ({}),
-          meta: undefined,
-        })
-      ).resolves.not.toThrow();
+      await middleware({
+        ctx: mockCtx,
+        input: { id: 2 },
+        next: mockNext,
+        path: "test",
+        type: "mutation",
+        getRawInput: async () => ({}),
+        meta: undefined,
+      });
+      expect(mockNext).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -401,17 +394,16 @@ describe("createEventPbacProcedure", () => {
       const procedure = createEventPbacProcedure("eventType.update");
       const middleware = getMiddleware(procedure);
 
-      await expect(
-        middleware({
-          ctx: mockCtx,
-          input: { id: 2, users: [1, 2, 3] },
-          next: mockNext,
-          path: "test",
-          type: "mutation",
-          getRawInput: async () => ({}),
-          meta: undefined,
-        })
-      ).resolves.not.toThrow();
+      await middleware({
+        ctx: mockCtx,
+        input: { id: 2, users: [1, 2, 3] },
+        next: mockNext,
+        path: "test",
+        type: "mutation",
+        getRawInput: async () => ({}),
+        meta: undefined,
+      });
+      expect(mockNext).toHaveBeenCalledTimes(1);
     });
 
     it("should deny assigning non-team members to team event", async () => {
@@ -481,17 +473,16 @@ describe("createEventPbacProcedure", () => {
       const procedure = createEventPbacProcedure("eventType.update");
       const middleware = getMiddleware(procedure);
 
-      await expect(
-        middleware({
-          ctx: mockCtx,
-          input: { id: 2, users: [] },
-          next: mockNext,
-          path: "test",
-          type: "mutation",
-          getRawInput: async () => ({}),
-          meta: undefined,
-        })
-      ).resolves.not.toThrow();
+      await middleware({
+        ctx: mockCtx,
+        input: { id: 2, users: [] },
+        next: mockNext,
+        path: "test",
+        type: "mutation",
+        getRawInput: async () => ({}),
+        meta: undefined,
+      });
+      expect(mockNext).toHaveBeenCalledTimes(1);
     });
 
     it("should not validate users when not provided", async () => {
@@ -500,17 +491,16 @@ describe("createEventPbacProcedure", () => {
       const procedure = createEventPbacProcedure("eventType.update");
       const middleware = getMiddleware(procedure);
 
-      await expect(
-        middleware({
-          ctx: mockCtx,
-          input: { id: 2 },
-          next: mockNext,
-          path: "test",
-          type: "mutation",
-          getRawInput: async () => ({}),
-          meta: undefined,
-        })
-      ).resolves.not.toThrow();
+      await middleware({
+        ctx: mockCtx,
+        input: { id: 2 },
+        next: mockNext,
+        path: "test",
+        type: "mutation",
+        getRawInput: async () => ({}),
+        meta: undefined,
+      });
+      expect(mockNext).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -550,17 +540,16 @@ describe("createEventPbacProcedure", () => {
       const procedure = createEventPbacProcedure("eventType.update");
       const middleware = getMiddleware(procedure);
 
-      await expect(
-        middleware({
-          ctx: mockCtx,
-          input: { eventTypeId: 1 },
-          next: mockNext,
-          path: "test",
-          type: "mutation",
-          getRawInput: async () => ({}),
-          meta: undefined,
-        })
-      ).resolves.not.toThrow();
+      await middleware({
+        ctx: mockCtx,
+        input: { eventTypeId: 1 },
+        next: mockNext,
+        path: "test",
+        type: "mutation",
+        getRawInput: async () => ({}),
+        meta: undefined,
+      });
+      expect(mockNext).toHaveBeenCalledTimes(1);
 
       expect(mockPrisma.eventType.findUnique).toHaveBeenCalledWith({
         where: { id: 1 },
@@ -569,7 +558,7 @@ describe("createEventPbacProcedure", () => {
     });
   });
 
-  describe("different permissions and fallback roles", () => {
+  describe("different permissions", () => {
     const teamEvent = {
       id: 2,
       userId: null,
@@ -587,36 +576,16 @@ describe("createEventPbacProcedure", () => {
       const procedure = createEventPbacProcedure("eventType.delete");
       const middleware = getMiddleware(procedure);
 
-      await expect(
-        middleware({
-          ctx: mockCtx,
-          input: { id: 2 },
-          next: mockNext,
-          path: "test",
-          type: "mutation",
-          getRawInput: async () => ({}),
-          meta: undefined,
-        })
-      ).resolves.not.toThrow();
-    });
-
-    it("should allow access with custom fallback roles", async () => {
-      mockPrisma.eventType.findUnique = vi.fn().mockResolvedValue(teamEvent);
-
-      const procedure = createEventPbacProcedure("eventType.create", [MembershipRole.OWNER]);
-      const middleware = getMiddleware(procedure);
-
-      await expect(
-        middleware({
-          ctx: mockCtx,
-          input: { id: 2 },
-          next: mockNext,
-          path: "test",
-          type: "mutation",
-          getRawInput: async () => ({}),
-          meta: undefined,
-        })
-      ).resolves.not.toThrow();
+      await middleware({
+        ctx: mockCtx,
+        input: { id: 2 },
+        next: mockNext,
+        path: "test",
+        type: "mutation",
+        getRawInput: async () => ({}),
+        meta: undefined,
+      });
+      expect(mockNext).toHaveBeenCalledTimes(1);
     });
   });
 
