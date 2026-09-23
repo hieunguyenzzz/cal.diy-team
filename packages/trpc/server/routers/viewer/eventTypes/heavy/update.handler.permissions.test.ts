@@ -122,3 +122,45 @@ describe("updateHandler teamId handling", () => {
     expect(data).not.toHaveProperty("teamId");
   });
 });
+
+describe("updateHandler ownership of referenced records", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.hashedLink.findMany.mockResolvedValue([]);
+    prismaMock.eventType.update.mockResolvedValue({
+      slug: "event",
+      schedulingType: null,
+    } as unknown as Awaited<ReturnType<typeof prismaMock.eventType.update>>);
+    mockEventType({ ...baseEventType, team: null });
+  });
+
+  const updateData = () => prismaMock.eventType.update.mock.calls[0][0].data;
+
+  it("does not connect an instant meeting schedule owned by someone else", async () => {
+    prismaMock.schedule.findFirst.mockResolvedValue(null);
+
+    await updateHandler({ ctx, input: { id: 1, instantMeetingSchedule: 77 } as UpdateOptions["input"] });
+
+    expect(prismaMock.schedule.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 1, id: 77 } })
+    );
+    expect(updateData()).not.toHaveProperty("instantMeetingSchedule");
+  });
+
+  it("connects the caller's own instant meeting schedule", async () => {
+    prismaMock.schedule.findFirst.mockResolvedValue({ id: 77 } as Awaited<
+      ReturnType<typeof prismaMock.schedule.findFirst>
+    >);
+
+    await updateHandler({ ctx, input: { id: 1, instantMeetingSchedule: 77 } as UpdateOptions["input"] });
+
+    expect(updateData()).toMatchObject({ instantMeetingSchedule: { connect: { id: 77 } } });
+  });
+
+  it("never writes parentId from input", async () => {
+    await updateHandler({ ctx, input: { id: 1, parentId: 999, title: "Mine" } as UpdateOptions["input"] });
+
+    expect(updateData()).not.toHaveProperty("parentId");
+    expect(updateData()).toMatchObject({ title: "Mine" });
+  });
+});

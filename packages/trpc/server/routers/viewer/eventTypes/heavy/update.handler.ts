@@ -94,6 +94,8 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     enablePerHostLocations,
     // An update must never move an event type between teams, so teamId is only compared, never written.
     teamId: inputTeamId,
+    // Managed-event parentage is set by the server when children are created, never by an update.
+    parentId: _parentId,
     ...rest
   } = input;
 
@@ -344,11 +346,20 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
   }
 
   if (instantMeetingSchedule) {
-    data.instantMeetingSchedule = {
-      connect: {
+    const userInstantMeetingSchedule = await ctx.prisma.schedule.findFirst({
+      where: {
+        userId: ctx.user.id,
         id: instantMeetingSchedule,
       },
-    };
+      select: { id: true },
+    });
+    if (userInstantMeetingSchedule) {
+      data.instantMeetingSchedule = {
+        connect: {
+          id: instantMeetingSchedule,
+        },
+      };
+    }
   } else if (schedule === null) {
     data.instantMeetingSchedule = {
       disconnect: true,
