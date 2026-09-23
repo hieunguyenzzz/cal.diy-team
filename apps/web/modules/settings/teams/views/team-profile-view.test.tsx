@@ -66,9 +66,15 @@ vi.mock("@calcom/ui/components/image-uploader", () => ({
   ),
 }));
 vi.mock("@calcom/web/modules/timezone/components/TimezoneSelect", () => ({
-  TimezoneSelect: ({ value, isDisabled }: { value: string; isDisabled?: boolean }) => (
-    <input aria-label="timezone" value={value} disabled={isDisabled} readOnly />
-  ),
+  TimezoneSelect: ({
+    inputId,
+    value,
+    isDisabled,
+  }: {
+    inputId: string;
+    value: string;
+    isDisabled?: boolean;
+  }) => <input id={inputId} value={value} disabled={isDisabled} readOnly />,
 }));
 vi.mock("../components/DeleteTeamSection", () => ({
   DeleteTeamSection: ({ team }: { team: { slug: string } }) => <div>delete-section:{team.slug}</div>,

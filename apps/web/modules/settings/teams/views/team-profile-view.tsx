@@ -137,8 +137,7 @@ function TeamProfileForm({ team, canEdit }: { team: Team; canEdit: boolean }) {
           <div>
             <Label htmlFor="team-profile-timezone">{t("timezone")}</Label>
             <TimezoneSelect
-              id="team-profile-timezone"
-              aria-label={t("timezone")}
+              inputId="team-profile-timezone"
               value={value}
               isDisabled={!canEdit}
               onChange={(option) => {
