@@ -388,6 +388,46 @@ export class MembershipRepository {
     });
   }
 
+  async createAccepted({ teamId, userId, role }: { teamId: number; userId: number; role: MembershipRole }) {
+    return this.prismaClient.membership.create({
+      data: { teamId, userId, role, accepted: true },
+      select: { id: true, role: true, accepted: true },
+    });
+  }
+
+  async updateRole({ teamId, userId, role }: { teamId: number; userId: number; role: MembershipRole }) {
+    return this.prismaClient.membership.update({
+      where: { userId_teamId: { userId, teamId } },
+      data: { role },
+      select: { id: true, role: true, accepted: true },
+    });
+  }
+
+  async deleteByUserIdAndTeamId({ teamId, userId }: { teamId: number; userId: number }) {
+    return this.prismaClient.membership.delete({
+      where: { userId_teamId: { userId, teamId } },
+      select: { id: true },
+    });
+  }
+
+  async countAcceptedOwners({ teamId }: { teamId: number }) {
+    return this.prismaClient.membership.count({
+      where: { teamId, role: MembershipRole.OWNER, accepted: true },
+    });
+  }
+
+  async findByTeamIdIncludeUser({ teamId }: { teamId: number }) {
+    return this.prismaClient.membership.findMany({
+      where: { teamId },
+      orderBy: { id: "asc" },
+      select: {
+        role: true,
+        accepted: true,
+        user: { select: { id: true, name: true, username: true, email: true, avatarUrl: true } },
+      },
+    });
+  }
+
   async findMembershipsWithUserByTeamId({ teamId }: { teamId: number }) {
     return this.prismaClient.membership.findMany({
       where: { teamId },

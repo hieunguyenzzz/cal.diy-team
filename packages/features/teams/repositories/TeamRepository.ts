@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
-import { SchedulingType } from "@calcom/prisma/enums";
+import { MembershipRole, SchedulingType } from "@calcom/prisma/enums";
 import { baseEventTypeSelect } from "@calcom/prisma/selects/event-types";
 
 const publicUserSelect = {
@@ -14,8 +14,85 @@ const publicUserSelect = {
 const standaloneTeamWhere = (slug: string) =>
   ({ slug, parentId: null, isOrganization: false }) satisfies Prisma.TeamWhereInput;
 
+const STANDALONE_TEAM = { parentId: null, isOrganization: false } satisfies Prisma.TeamWhereInput;
+
+const teamProfileSelect = {
+  id: true,
+  name: true,
+  slug: true,
+  bio: true,
+  timeZone: true,
+  logoUrl: true,
+} satisfies Prisma.TeamSelect;
+
+export type TeamProfileUpdate = {
+  name?: string;
+  slug?: string;
+  bio?: string | null;
+  timeZone?: string;
+  logoUrl?: string | null;
+};
+
 export class TeamRepository {
   constructor(private prismaClient: PrismaClient) {}
+
+  async create({
+    name,
+    slug,
+    bio,
+    timeZone,
+    ownerUserId,
+  }: {
+    name: string;
+    slug: string;
+    bio?: string | null;
+    timeZone?: string;
+    ownerUserId: number;
+  }) {
+    return this.prismaClient.team.create({
+      data: {
+        name,
+        slug,
+        bio,
+        timeZone,
+        ...STANDALONE_TEAM,
+        members: { create: { userId: ownerUserId, role: MembershipRole.OWNER, accepted: true } },
+      },
+      select: teamProfileSelect,
+    });
+  }
+
+  async update({ id, data }: { id: number; data: TeamProfileUpdate }) {
+    return this.prismaClient.team.update({ where: { id }, data, select: teamProfileSelect });
+  }
+
+  async delete({ id }: { id: number }) {
+    return this.prismaClient.team.delete({ where: { id }, select: { id: true } });
+  }
+
+  async findById({ id }: { id: number }) {
+    return this.prismaClient.team.findFirst({ where: { id, ...STANDALONE_TEAM }, select: teamProfileSelect });
+  }
+
+  async findIdBySlugAmongTopLevelTeams({ slug }: { slug: string }) {
+    return this.prismaClient.team.findFirst({ where: { slug, parentId: null }, select: { id: true } });
+  }
+
+  async listByMemberUserId({ userId }: { userId: number }) {
+    return this.prismaClient.team.findMany({
+      where: { ...STANDALONE_TEAM, members: { some: { userId, accepted: true } } },
+      orderBy: { name: "asc" },
+      select: { ...teamProfileSelect, members: { where: { userId }, select: { role: true } } },
+    });
+  }
+
+  async listStandalone() {
+    return this.prismaClient.team.findMany({
+      where: STANDALONE_TEAM,
+      orderBy: { name: "asc" },
+      select: { ...teamProfileSelect, _count: { select: { members: true } } },
+    });
+  }
 
   async findBySlugIncludeEventTypesAndMembers({ slug }: { slug: string }) {
     // (slug, parentId) is unique, but Postgres treats NULL parentIds as distinct, so pin the order
