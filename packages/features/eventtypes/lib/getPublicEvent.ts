@@ -5,6 +5,7 @@ import { getAppFromSlug } from "@calcom/app-store/utils";
 import { eventTypeMetaDataSchemaWithTypedApps } from "@calcom/app-store/zod-utils";
 import dayjs from "@calcom/dayjs";
 import { getBookingFieldsWithSystemFields } from "@calcom/features/bookings/lib/getBookingFields";
+import { canViewPrivateTeamMembers } from "@calcom/features/eventtypes/lib/canViewPrivateTeamMembers";
 import { getDefaultEvent, getUsernameList } from "@calcom/features/eventtypes/lib/defaultEvents";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { getOrgOrTeamAvatar, getPlaceholderAvatar } from "@calcom/lib/defaultAvatarImage";
@@ -13,7 +14,6 @@ import { isRecurringEvent, parseRecurringEvent } from "@calcom/lib/isRecurringEv
 import { markdownToSafeHTML } from "@calcom/lib/markdownToSafeHTML";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma, Team, User as UserType } from "@calcom/prisma/client";
-import { MembershipRole } from "@calcom/prisma/enums";
 import type { BookerLayoutSettings } from "@calcom/prisma/zod-utils";
 import {
   BookerLayouts,
@@ -25,18 +25,6 @@ import {
 } from "@calcom/prisma/zod-utils";
 import type { UserProfile } from "@calcom/types/UserProfile";
 
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) {
-    return true;
-  }
-  async hasPermission(..._args: unknown[]) {
-    return true;
-  }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> {
-    return [];
-  }
-}
 const getSlugOrRequestedSlug = (slug: string) => ({ slug });
 const getBookerBaseUrlSync = (_orgSlug?: string | number | null): string =>
   process.env.NEXT_PUBLIC_WEBAPP_URL || "https://app.cal.com";
@@ -539,32 +527,17 @@ export const getPublicEvent = async (
       length: eventWithUserProfiles.length,
     });
   }
-  let canViewPrivateTeamMembers = false;
-  if (currentUserId && event.teamId) {
-    const permissionCheckService = new PermissionCheckService();
-    canViewPrivateTeamMembers = await permissionCheckService.checkPermission({
-      userId: currentUserId,
-      teamId: event.teamId,
-      permission: "team.read",
-      fallbackRoles: [MembershipRole.ADMIN, MembershipRole.OWNER],
-    });
-
-    if (!canViewPrivateTeamMembers && event.team?.parentId) {
-      canViewPrivateTeamMembers = await permissionCheckService.checkPermission({
-        userId: currentUserId,
-        teamId: event.team.parentId,
-        permission: "team.read",
-        fallbackRoles: [MembershipRole.ADMIN, MembershipRole.OWNER],
-      });
-    }
-  }
-
-  if (event.team?.isPrivate && !canViewPrivateTeamMembers) {
+  const hidePrivateTeamMembers =
+    !!event.team?.isPrivate &&
+    !(event.teamId && (await canViewPrivateTeamMembers({ prisma, currentUserId, teamId: event.teamId })));
+  if (hidePrivateTeamMembers) {
     users = [];
   }
 
   return {
     ...eventWithUserProfiles,
+    // Hosts and the owner carry a member's id, username, name and avatar, so they are hidden with users.
+    ...(hidePrivateTeamMembers && { owner: null, subsetOfHosts: [], hosts: fetchAllUsers ? [] : undefined }),
     bookerLayouts: bookerLayoutsSchema.parse(eventMetaData?.bookerLayouts || null),
     description: markdownToSafeHTML(eventWithUserProfiles.description),
     metadata: eventMetaData,

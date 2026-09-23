@@ -2,6 +2,7 @@ import { getDefaultLocations } from "@calcom/app-store/_utils/getDefaultLocation
 import { DailyLocationType } from "@calcom/app-store/constants";
 import { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
+import { ScheduleRepository } from "@calcom/features/schedules/repositories/ScheduleRepository";
 import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import type { PrismaClient } from "@calcom/prisma";
 import { Prisma } from "@calcom/prisma/client";
@@ -64,8 +65,16 @@ export const createHandler = async ({ ctx, input }: CreateOptions) => {
     // Only connecting the current user for non-managed event types and non team event types
     users: isManagedEventType || schedulingType ? undefined : { connect: { id: userId } },
     locations,
-    schedule: scheduleId ? { connect: { id: scheduleId } } : undefined,
   };
+
+  const scheduleRepo = new ScheduleRepository(ctx.prisma);
+  const isOwnSchedule = async (id: number) =>
+    (await scheduleRepo.findScheduleByIdForOwnershipCheck({ scheduleId: id }))?.userId === userId;
+
+  // Like update: silently skip a schedule the caller does not own instead of linking it.
+  if (scheduleId && (await isOwnSchedule(scheduleId))) {
+    data.schedule = { connect: { id: scheduleId } };
+  }
 
   if (isCalVideoLocationActive && calVideoSettings) {
     data.calVideoSettings = {

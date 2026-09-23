@@ -1,12 +1,14 @@
+import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import type { PrismaClient } from "@calcom/prisma";
-import { MembershipRole } from "@calcom/prisma/enums";
+import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BookingRepository } from "../repositories/BookingRepository";
 import { BookingAccessService } from "./BookingAccessService";
 
 vi.mock("../repositories/BookingRepository");
 vi.mock("@calcom/features/users/repositories/UserRepository");
+vi.mock("@calcom/features/membership/repositories/MembershipRepository");
 
 vi.mock("@calcom/prisma", () => ({
   default: {},
@@ -21,9 +23,26 @@ describe("BookingAccessService", () => {
   };
   let mockUserRepo: {
     getUserOrganizationAndTeams: ReturnType<typeof vi.fn>;
+    findRoleById: ReturnType<typeof vi.fn>;
   };
-  let mockPermissionCheckService: {
-    checkPermission: ReturnType<typeof vi.fn>;
+  let mockMembershipRepo: {
+    findRoleAndAcceptedByUserIdAndTeamId: ReturnType<typeof vi.fn>;
+    findFirstAcceptedByUserIdAndTeamIdsAndRoles: ReturnType<typeof vi.fn>;
+  };
+
+  // Memberships of the requesting user (123), keyed by teamId.
+  const givenMemberships = (memberships: Record<number, { role: MembershipRole; accepted: boolean }>) => {
+    mockMembershipRepo.findRoleAndAcceptedByUserIdAndTeamId.mockImplementation(
+      async ({ teamId }: { teamId: number }) => memberships[teamId] ?? null
+    );
+    mockMembershipRepo.findFirstAcceptedByUserIdAndTeamIdsAndRoles.mockImplementation(
+      async ({ teamIds, roles }: { teamIds: number[]; roles: MembershipRole[] }) => {
+        const match = teamIds.find(
+          (teamId) => memberships[teamId]?.accepted && roles.includes(memberships[teamId].role)
+        );
+        return match === undefined ? null : { id: match };
+      }
+    );
   };
 
   beforeEach(() => {
@@ -37,22 +56,25 @@ describe("BookingAccessService", () => {
 
     mockUserRepo = {
       getUserOrganizationAndTeams: vi.fn(),
+      findRoleById: vi.fn().mockResolvedValue({ role: UserPermissionRole.USER }),
     };
 
-    mockPermissionCheckService = {
-      checkPermission: vi.fn(),
+    mockMembershipRepo = {
+      findRoleAndAcceptedByUserIdAndTeamId: vi.fn().mockResolvedValue(null),
+      findFirstAcceptedByUserIdAndTeamIdsAndRoles: vi.fn().mockResolvedValue(null),
     };
 
     vi.mocked(BookingRepository).mockImplementation(function () {
       return mockBookingRepo as any;
     });
     vi.mocked(UserRepository).mockImplementation(function () {
-      return mockUserRepo as any;
+      return mockUserRepo as unknown as UserRepository;
+    });
+    vi.mocked(MembershipRepository).mockImplementation(function () {
+      return mockMembershipRepo as unknown as MembershipRepository;
     });
 
     service = new BookingAccessService(mockPrismaClient);
-
-    (service as any).permissionCheckService = mockPermissionCheckService;
   });
 
   describe("doesUserIdHaveAccessToBooking", () => {
@@ -168,180 +190,179 @@ describe("BookingAccessService", () => {
       });
     });
 
+    const hasAccess = () =>
+      service.doesUserIdHaveAccessToBooking({ userId: 123, bookingUid: "test-booking-uid" });
+
     describe("Case 3: Team Event Access", () => {
-      it("should return true when user has booking.readTeamBookings permission", async () => {
-        const mockBooking = {
-          userId: 456,
-          eventType: {
-            teamId: 100,
-          },
-          attendees: [],
-        };
+      const teamBooking = { userId: 456, eventType: { teamId: 100 }, attendees: [] };
 
-        mockBookingRepo.findByUidIncludeEventType.mockResolvedValue(mockBooking);
-        mockPermissionCheckService.checkPermission.mockResolvedValue(true);
+      beforeEach(() => {
+        mockBookingRepo.findByUidIncludeEventType.mockResolvedValue(teamBooking);
+      });
 
-        const result = await service.doesUserIdHaveAccessToBooking({
-          userId: 123,
-          bookingUid: "test-booking-uid",
-        });
+      it("denies a non-member", async () => {
+        givenMemberships({});
 
-        expect(result).toBe(true);
-        expect(mockPermissionCheckService.checkPermission).toHaveBeenCalledWith({
+        await expect(hasAccess()).resolves.toBe(false);
+        expect(mockMembershipRepo.findRoleAndAcceptedByUserIdAndTeamId).toHaveBeenCalledWith({
           userId: 123,
           teamId: 100,
-          permission: "booking.readTeamBookings",
-          fallbackRoles: [MembershipRole.OWNER, MembershipRole.ADMIN],
         });
       });
 
-      it("should return false when user lacks booking.readTeamBookings permission", async () => {
-        const mockBooking = {
-          userId: 456,
-          eventType: {
-            teamId: 100,
-          },
-          attendees: [],
-        };
+      it("denies a MEMBER", async () => {
+        givenMemberships({ 100: { role: MembershipRole.MEMBER, accepted: true } });
 
-        mockBookingRepo.findByUidIncludeEventType.mockResolvedValue(mockBooking);
-        mockPermissionCheckService.checkPermission.mockResolvedValue(false);
+        await expect(hasAccess()).resolves.toBe(false);
+      });
 
-        const result = await service.doesUserIdHaveAccessToBooking({
-          userId: 123,
-          bookingUid: "test-booking-uid",
-        });
+      it("denies an ADMIN whose invite is not accepted", async () => {
+        givenMemberships({ 100: { role: MembershipRole.ADMIN, accepted: false } });
 
-        expect(result).toBe(false);
-        expect(mockPermissionCheckService.checkPermission).toHaveBeenCalledWith({
-          userId: 123,
-          teamId: 100,
-          permission: "booking.readTeamBookings",
-          fallbackRoles: [MembershipRole.OWNER, MembershipRole.ADMIN],
-        });
+        await expect(hasAccess()).resolves.toBe(false);
+      });
+
+      it.each([MembershipRole.ADMIN, MembershipRole.OWNER])("allows an accepted %s", async (role) => {
+        givenMemberships({ 100: { role, accepted: true } });
+
+        await expect(hasAccess()).resolves.toBe(true);
+      });
+
+      it("allows the instance admin without a membership", async () => {
+        givenMemberships({});
+        mockUserRepo.findRoleById.mockResolvedValue({ role: UserPermissionRole.ADMIN });
+
+        await expect(hasAccess()).resolves.toBe(true);
+        expect(mockUserRepo.findRoleById).toHaveBeenCalledWith({ id: 123 });
       });
     });
 
-    describe("Case 4: Org Admin Access (Personal Bookings)", () => {
-      it("should return true when user has booking.readOrgBookings permission", async () => {
-        const mockBooking = {
-          userId: 456,
-          eventType: null,
-          attendees: [],
-        };
+    describe("Managed event (child of a team event type)", () => {
+      const managedBooking = {
+        userId: 456,
+        eventType: { teamId: null, parent: { teamId: 100 } },
+        attendees: [],
+      };
 
-        const mockBookingOwner = {
-          organizationId: 200,
-          teams: [],
-        };
-
-        mockBookingRepo.findByUidIncludeEventType.mockResolvedValue(mockBooking);
-        mockUserRepo.getUserOrganizationAndTeams.mockResolvedValue(mockBookingOwner);
-        mockPermissionCheckService.checkPermission.mockResolvedValue(true);
-
-        const result = await service.doesUserIdHaveAccessToBooking({
-          userId: 123,
-          bookingUid: "test-booking-uid",
-        });
-
-        expect(result).toBe(true);
-        expect(mockPermissionCheckService.checkPermission).toHaveBeenCalledWith({
-          userId: 123,
-          teamId: 200,
-          permission: "booking.readOrgBookings",
-          fallbackRoles: [MembershipRole.OWNER, MembershipRole.ADMIN],
-        });
+      beforeEach(() => {
+        mockBookingRepo.findByUidIncludeEventType.mockResolvedValue(managedBooking);
       });
 
-      it("should return false when user lacks booking.readOrgBookings permission", async () => {
-        const mockBooking = {
+      it("denies a MEMBER and an un-accepted ADMIN of the parent team", async () => {
+        givenMemberships({ 100: { role: MembershipRole.MEMBER, accepted: true } });
+        await expect(hasAccess()).resolves.toBe(false);
+
+        givenMemberships({ 100: { role: MembershipRole.ADMIN, accepted: false } });
+        await expect(hasAccess()).resolves.toBe(false);
+      });
+
+      it("allows an accepted ADMIN of the parent team", async () => {
+        givenMemberships({ 100: { role: MembershipRole.ADMIN, accepted: true } });
+
+        await expect(hasAccess()).resolves.toBe(true);
+      });
+    });
+
+    describe("Case 4: Organisation of the booking owner", () => {
+      it("denies even an OWNER of the owner's organisation, because there are no orgs", async () => {
+        mockBookingRepo.findByUidIncludeEventType.mockResolvedValue({
           userId: 456,
           eventType: null,
           attendees: [],
-        };
-
-        const mockBookingOwner = {
-          organizationId: 200,
-          teams: [],
-        };
-
-        mockBookingRepo.findByUidIncludeEventType.mockResolvedValue(mockBooking);
-        mockUserRepo.getUserOrganizationAndTeams.mockResolvedValue(mockBookingOwner);
-        mockPermissionCheckService.checkPermission.mockResolvedValue(false);
-
-        const result = await service.doesUserIdHaveAccessToBooking({
-          userId: 123,
-          bookingUid: "test-booking-uid",
         });
+        mockUserRepo.getUserOrganizationAndTeams.mockResolvedValue({ organizationId: 200, teams: [] });
+        givenMemberships({ 200: { role: MembershipRole.OWNER, accepted: true } });
 
-        expect(result).toBe(false);
+        await expect(hasAccess()).resolves.toBe(false);
+        expect(mockMembershipRepo.findRoleAndAcceptedByUserIdAndTeamId).not.toHaveBeenCalledWith(
+          expect.objectContaining({ teamId: 200 })
+        );
+        expect(mockMembershipRepo.findFirstAcceptedByUserIdAndTeamIdsAndRoles).not.toHaveBeenCalled();
       });
     });
 
     describe("Case 5: Team Admin Access (Personal Bookings)", () => {
-      it("should return true when user has booking.readTeamBookings on ANY team", async () => {
-        const mockBooking = {
-          userId: 456,
-          eventType: null,
-          attendees: [],
-        };
+      const personalBooking = { userId: 456, eventType: null, attendees: [] };
 
-        const mockBookingOwner = {
+      beforeEach(() => {
+        mockBookingRepo.findByUidIncludeEventType.mockResolvedValue(personalBooking);
+        mockUserRepo.getUserOrganizationAndTeams.mockResolvedValue({
           organizationId: null,
           teams: [{ teamId: 300 }, { teamId: 400 }],
-        };
-
-        mockBookingRepo.findByUidIncludeEventType.mockResolvedValue(mockBooking);
-        mockUserRepo.getUserOrganizationAndTeams.mockResolvedValue(mockBookingOwner);
-        mockPermissionCheckService.checkPermission
-          .mockResolvedValueOnce(false) // Team 300 - no permission
-          .mockResolvedValueOnce(true); // Team 400 - has permission
-
-        const result = await service.doesUserIdHaveAccessToBooking({
-          userId: 123,
-          bookingUid: "test-booking-uid",
-        });
-
-        expect(result).toBe(true);
-        expect(mockPermissionCheckService.checkPermission).toHaveBeenCalledTimes(2);
-        expect(mockPermissionCheckService.checkPermission).toHaveBeenNthCalledWith(1, {
-          userId: 123,
-          teamId: 300,
-          permission: "booking.readTeamBookings",
-          fallbackRoles: [MembershipRole.OWNER, MembershipRole.ADMIN],
-        });
-        expect(mockPermissionCheckService.checkPermission).toHaveBeenNthCalledWith(2, {
-          userId: 123,
-          teamId: 400,
-          permission: "booking.readTeamBookings",
-          fallbackRoles: [MembershipRole.OWNER, MembershipRole.ADMIN],
         });
       });
 
-      it("should return false when user lacks permission on all teams", async () => {
-        const mockBooking = {
-          userId: 456,
-          eventType: null,
-          attendees: [],
-        };
+      it("denies a non-member of every team the owner belongs to, with a single membership query", async () => {
+        givenMemberships({});
 
-        const mockBookingOwner = {
-          organizationId: null,
-          teams: [{ teamId: 300 }, { teamId: 400 }],
-        };
-
-        mockBookingRepo.findByUidIncludeEventType.mockResolvedValue(mockBooking);
-        mockUserRepo.getUserOrganizationAndTeams.mockResolvedValue(mockBookingOwner);
-        mockPermissionCheckService.checkPermission.mockResolvedValue(false);
-
-        const result = await service.doesUserIdHaveAccessToBooking({
+        await expect(hasAccess()).resolves.toBe(false);
+        expect(mockMembershipRepo.findFirstAcceptedByUserIdAndTeamIdsAndRoles).toHaveBeenCalledTimes(1);
+        expect(mockMembershipRepo.findFirstAcceptedByUserIdAndTeamIdsAndRoles).toHaveBeenCalledWith({
           userId: 123,
-          bookingUid: "test-booking-uid",
+          teamIds: [300, 400],
+          roles: [MembershipRole.ADMIN, MembershipRole.OWNER],
+        });
+        expect(mockMembershipRepo.findRoleAndAcceptedByUserIdAndTeamId).not.toHaveBeenCalled();
+      });
+
+      it("denies a MEMBER of the owner's teams", async () => {
+        givenMemberships({
+          300: { role: MembershipRole.MEMBER, accepted: true },
+          400: { role: MembershipRole.MEMBER, accepted: true },
         });
 
-        expect(result).toBe(false);
-        expect(mockPermissionCheckService.checkPermission).toHaveBeenCalledTimes(2);
+        await expect(hasAccess()).resolves.toBe(false);
       });
+
+      it.each([
+        MembershipRole.ADMIN,
+        MembershipRole.OWNER,
+      ])("allows an accepted %s of any one of the owner's teams", async (role) => {
+        givenMemberships({
+          300: { role: MembershipRole.MEMBER, accepted: true },
+          400: { role, accepted: true },
+        });
+
+        await expect(hasAccess()).resolves.toBe(true);
+      });
+
+      it("allows the instance admin", async () => {
+        givenMemberships({});
+        mockUserRepo.findRoleById.mockResolvedValue({ role: UserPermissionRole.ADMIN });
+
+        await expect(hasAccess()).resolves.toBe(true);
+      });
+
+      it("denies the instance admin when the owner belongs to no team, without a role lookup", async () => {
+        mockUserRepo.getUserOrganizationAndTeams.mockResolvedValue({ organizationId: null, teams: [] });
+        mockUserRepo.findRoleById.mockResolvedValue({ role: UserPermissionRole.ADMIN });
+
+        await expect(hasAccess()).resolves.toBe(false);
+        expect(mockUserRepo.findRoleById).not.toHaveBeenCalled();
+      });
+    });
+
+    it("does not look up the caller's role for a personal booking without an owner", async () => {
+      mockBookingRepo.findByUidIncludeEventType.mockResolvedValue({
+        userId: null,
+        eventType: null,
+        attendees: [],
+      });
+
+      await expect(hasAccess()).resolves.toBe(false);
+      expect(mockUserRepo.findRoleById).not.toHaveBeenCalled();
+    });
+
+    it("does not look up team roles when the caller is the organizer", async () => {
+      mockBookingRepo.findByUidIncludeEventType.mockResolvedValue({
+        userId: 123,
+        eventType: { teamId: 100 },
+        attendees: [],
+      });
+
+      await expect(hasAccess()).resolves.toBe(true);
+      expect(mockMembershipRepo.findRoleAndAcceptedByUserIdAndTeamId).not.toHaveBeenCalled();
+      expect(mockUserRepo.findRoleById).not.toHaveBeenCalled();
     });
   });
 });

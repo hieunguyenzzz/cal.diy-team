@@ -79,6 +79,8 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     // Extract this from the input so it doesn't get saved in the db
     // eslint-disable-next-line
     userId,
+    // Ownership, like userId, is never changed by an update.
+    profileId: _profileId,
     bookingFields,
     offsetStart,
     secondaryEmailId,
@@ -94,6 +96,12 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     enablePerHostLocations,
     // An update must never move an event type between teams, so teamId is only compared, never written.
     teamId: inputTeamId,
+    // Managed-event parentage is set by the server when children are created, never by an update.
+    parentId: _parentId,
+    // The scalar schedule ids would bypass the ownership checks below: scheduleId is folded into
+    // `schedule` (API v2 sends it) and instantMeetingScheduleId has no sender, so it is dropped.
+    scheduleId: scalarScheduleId,
+    instantMeetingScheduleId: _instantMeetingScheduleId,
     ...rest
   } = input;
 
@@ -320,35 +328,36 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     throw new TRPCError({ code: "BAD_REQUEST", message: t(bookerLayoutsError) });
   }
 
-  if (schedule) {
-    // Check that the schedule belongs to the user
-    const userScheduleQuery = await ctx.prisma.schedule.findFirst({
-      where: {
-        userId: ctx.user.id,
-        id: schedule,
-      },
-    });
-    if (userScheduleQuery) {
+  const scheduleRepo = new ScheduleRepository(ctx.prisma);
+  const isOwnSchedule = async (scheduleId: number) =>
+    (await scheduleRepo.findScheduleByIdForOwnershipCheck({ scheduleId }))?.userId === ctx.user.id;
+
+  const requestedSchedule = schedule === undefined ? scalarScheduleId : schedule;
+  if (requestedSchedule) {
+    if (await isOwnSchedule(requestedSchedule)) {
       data.schedule = {
         connect: {
-          id: schedule,
+          id: requestedSchedule,
         },
       };
     }
   }
   // allows unsetting a schedule through { schedule: null, ... }
-  else if (null === schedule || schedule === 0) {
+  else if (null === requestedSchedule || requestedSchedule === 0) {
     data.schedule = {
       disconnect: true,
     };
   }
 
   if (instantMeetingSchedule) {
-    data.instantMeetingSchedule = {
-      connect: {
-        id: instantMeetingSchedule,
-      },
-    };
+    if (await isOwnSchedule(instantMeetingSchedule)) {
+      data.instantMeetingSchedule = {
+        connect: {
+          id: instantMeetingSchedule,
+        },
+      };
+    }
+    // Deliberately keyed on `schedule`, not the scalar scheduleId, to keep the pre-existing behaviour.
   } else if (schedule === null) {
     data.instantMeetingSchedule = {
       disconnect: true,
@@ -359,7 +368,6 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
 
   if (restrictionScheduleId) {
     // Verify that the user owns the restriction schedule or is a team member
-    const scheduleRepo = new ScheduleRepository(ctx.prisma);
     const restrictionSchedule = await scheduleRepo.findScheduleByIdForOwnershipCheck({
       scheduleId: restrictionScheduleId,
     });
