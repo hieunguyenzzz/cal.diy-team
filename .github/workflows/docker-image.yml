@@ -69,7 +69,8 @@ jobs:
   deploy:
     name: "Trigger Dokploy deploy"
     needs: build
-    if: github.event_name != 'pull_request'
+    # Skip cleanly (not red) until DOKPLOY_DEPLOY_WEBHOOK is added after the switchover.
+    if: github.event_name != 'pull_request' && secrets.DOKPLOY_DEPLOY_WEBHOOK != ''
     runs-on: ubuntu-latest
     env:
       DEPLOY_WEBHOOK: ${{ secrets.DOKPLOY_DEPLOY_WEBHOOK }}
