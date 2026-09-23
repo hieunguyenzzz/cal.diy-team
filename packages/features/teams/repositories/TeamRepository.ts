@@ -11,10 +11,9 @@ const publicUserSelect = {
 } satisfies Prisma.UserSelect;
 
 // Only standalone teams: Cal.diy has no organizations, so sub-teams and orgs stay unreachable.
-const standaloneTeamWhere = (slug: string) =>
-  ({ slug, parentId: null, isOrganization: false }) satisfies Prisma.TeamWhereInput;
-
 const STANDALONE_TEAM = { parentId: null, isOrganization: false } satisfies Prisma.TeamWhereInput;
+
+const standaloneTeamWhere = (slug: string) => ({ slug, ...STANDALONE_TEAM }) satisfies Prisma.TeamWhereInput;
 
 const teamProfileSelect = {
   id: true,
@@ -36,7 +35,7 @@ export type TeamProfileUpdate = {
 export class TeamRepository {
   constructor(private prismaClient: PrismaClient) {}
 
-  async create({
+  async createWithOwner({
     name,
     slug,
     bio,
@@ -85,7 +84,7 @@ export class TeamRepository {
     });
   }
 
-  async findById({ id }: { id: number }) {
+  async findStandaloneById({ id }: { id: number }) {
     return this.prismaClient.team.findFirst({ where: { id, ...STANDALONE_TEAM }, select: teamProfileSelect });
   }
 
@@ -93,7 +92,7 @@ export class TeamRepository {
     return this.prismaClient.team.findFirst({ where: { slug, parentId: null }, select: { id: true } });
   }
 
-  async listByMemberUserId({ userId }: { userId: number }) {
+  async listByMemberUserIdIncludeRole({ userId }: { userId: number }) {
     return this.prismaClient.team.findMany({
       where: { ...STANDALONE_TEAM, members: { some: { userId, accepted: true } } },
       orderBy: { name: "asc" },
@@ -101,7 +100,7 @@ export class TeamRepository {
     });
   }
 
-  async listStandalone() {
+  async listStandaloneIncludeMemberCount() {
     return this.prismaClient.team.findMany({
       where: STANDALONE_TEAM,
       orderBy: { name: "asc" },

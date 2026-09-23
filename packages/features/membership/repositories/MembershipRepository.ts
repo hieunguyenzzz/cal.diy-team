@@ -416,6 +416,7 @@ export class MembershipRepository {
     });
   }
 
+  // Minimal projection for the team members list, unlike findMembershipsWithUserByTeamId's full user payload.
   async findByTeamIdIncludeUser({ teamId }: { teamId: number }) {
     return this.prismaClient.membership.findMany({
       where: { teamId },

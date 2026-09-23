@@ -1,5 +1,6 @@
 import type { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
+import { validateTeamLogo } from "@calcom/features/teams/lib/validateTeamLogo";
 import type { TeamProfileUpdate, TeamRepository } from "@calcom/features/teams/repositories/TeamRepository";
 import type { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { ErrorWithCode } from "@calcom/lib/errors";
@@ -27,13 +28,7 @@ interface ITeamServiceDeps {
 }
 
 const OWNER_ONLY: readonly MembershipRole[] = [MembershipRole.OWNER];
-
-// Only types /api/avatar can serve: it strips png/jpeg prefixes, and SVG is converted to PNG on upload.
-const LOGO_DATA_URL = /^data:image\/(png|jpeg|svg\+xml);base64,/;
-const BASE64_BODY = /^[A-Za-z0-9+/]+={0,2}$/;
-const MAX_LOGO_BYTES = 2 * 1024 * 1024;
-// Capping the raw length first stops padding from shrinking the size estimate below.
-const MAX_LOGO_BASE64_LENGTH = Math.ceil(MAX_LOGO_BYTES / 3) * 4;
+const REMOVE_MEMBER_DENIED = "Only team admins can remove members";
 
 class TeamService {
   constructor(private readonly deps: ITeamServiceDeps) {}
@@ -45,7 +40,7 @@ class TeamService {
     this.assertInstanceAdmin(actor, "Only instance admins can create teams");
     const slug = await this.resolveAvailableSlug(input.slug ?? input.name);
 
-    return this.deps.teamRepository.create({
+    return this.deps.teamRepository.createWithOwner({
       name: input.name,
       slug,
       bio: input.bio,
@@ -62,7 +57,7 @@ class TeamService {
     const data: TeamProfileUpdate = { ...profile };
     if (slug !== undefined) data.slug = await this.resolveAvailableSlug(slug, teamId);
     if (logo !== undefined) {
-      if (logo !== null) this.assertValidLogo(logo);
+      if (logo !== null) validateTeamLogo(logo);
       data.logoUrl = logo === null ? null : await this.deps.uploadLogo({ teamId, logo });
     }
 
@@ -90,9 +85,7 @@ class TeamService {
 
     const user = await this.deps.userRepository.findByEmail({ email: input.email });
     if (!user) {
-      throw ErrorWithCode.Factory.NotFound(
-        `No user has the email ${input.email}. Create the user first at /settings/admin/users/add.`
-      );
+      throw ErrorWithCode.Factory.NotFound(`No user has the email ${input.email}. Create the user first.`);
     }
     if (
       await this.deps.membershipRepository.findRoleAndAcceptedByUserIdAndTeamId({ userId: user.id, teamId })
@@ -123,37 +116,24 @@ class TeamService {
   async removeMember(actor: Actor, teamId: number, userId: number) {
     const isSelf = actor.userId === userId;
     if (!isSelf) {
-      await this.assertTeamRole(actor, teamId, TEAM_ADMIN_ROLES, "Only team admins can remove members");
+      await this.assertTeamRole(actor, teamId, TEAM_ADMIN_ROLES, REMOVE_MEMBER_DENIED);
     }
     await this.findTeamOrThrow(teamId);
     const target = await this.findMembershipOrThrow(teamId, userId);
+
     // Any accepted member may leave; a pending invitee has no say in the team yet.
     const isLeaving = isSelf && target.accepted;
     if (isSelf && !isLeaving) {
-      await this.assertTeamRole(actor, teamId, TEAM_ADMIN_ROLES, "Only team admins can remove members");
+      await this.assertTeamRole(actor, teamId, TEAM_ADMIN_ROLES, REMOVE_MEMBER_DENIED);
     }
-
-    if (target.role === MembershipRole.OWNER) {
-      if (!isLeaving) {
-        await this.assertTeamRole(actor, teamId, OWNER_ONLY, "Only an owner can remove an owner");
-      }
-      if (target.accepted) await this.assertNotLastOwner(teamId);
+    if (target.role === MembershipRole.OWNER && !isLeaving) {
+      await this.assertTeamRole(actor, teamId, OWNER_ONLY, "Only an owner can remove an owner");
+    }
+    if (target.role === MembershipRole.OWNER && target.accepted) {
+      await this.assertNotLastOwner(teamId);
     }
 
     await this.deps.membershipRepository.deleteByUserIdAndTeamId({ teamId, userId });
-  }
-
-  private assertValidLogo(logo: string) {
-    const prefix = LOGO_DATA_URL.exec(logo);
-    if (!prefix) {
-      throw ErrorWithCode.Factory.BadRequest("The logo must be a base64 PNG, JPEG or SVG data URL");
-    }
-    const base64 = logo.slice(prefix[0].length);
-    const tooLarge = () => ErrorWithCode.Factory.BadRequest("The logo must be 2 MB or smaller");
-    if (base64.length > MAX_LOGO_BASE64_LENGTH) throw tooLarge();
-    if (!BASE64_BODY.test(base64)) throw ErrorWithCode.Factory.BadRequest("The logo is not valid base64");
-    const padding = /=*$/.exec(base64)?.[0].length ?? 0;
-    if (Math.floor((base64.length * 3) / 4) - padding > MAX_LOGO_BYTES) throw tooLarge();
   }
 
   private assertInstanceAdmin(actor: Actor, message: string) {
@@ -176,7 +156,7 @@ class TeamService {
   }
 
   private async findTeamOrThrow(teamId: number) {
-    const team = await this.deps.teamRepository.findById({ id: teamId });
+    const team = await this.deps.teamRepository.findStandaloneById({ id: teamId });
     if (!team) throw ErrorWithCode.Factory.NotFound(`Team ${teamId} not found`);
     return team;
   }

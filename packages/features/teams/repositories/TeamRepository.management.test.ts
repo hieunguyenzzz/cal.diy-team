@@ -25,7 +25,7 @@ describe("TeamRepository team management", () => {
   });
 
   it("creates a standalone team with its creator as an accepted OWNER", async () => {
-    await repository.create({
+    await repository.createWithOwner({
       name: "Sales",
       slug: "sales",
       bio: null,
@@ -63,7 +63,7 @@ describe("TeamRepository team management", () => {
   });
 
   it("finds only standalone teams by id", async () => {
-    await repository.findById({ id: 10 });
+    await repository.findStandaloneById({ id: 10 });
 
     expect(prisma.team.findFirst).toHaveBeenCalledWith({
       where: { id: 10, ...standalone },
@@ -81,7 +81,7 @@ describe("TeamRepository team management", () => {
   });
 
   it("lists the standalone teams a user is an accepted member of, with their role", async () => {
-    await repository.listByMemberUserId({ userId: 7 });
+    await repository.listByMemberUserIdIncludeRole({ userId: 7 });
 
     expect(prisma.team.findMany).toHaveBeenCalledWith({
       where: { ...standalone, members: { some: { userId: 7, accepted: true } } },
@@ -91,7 +91,7 @@ describe("TeamRepository team management", () => {
   });
 
   it("lists every standalone team with a member count", async () => {
-    await repository.listStandalone();
+    await repository.listStandaloneIncludeMemberCount();
 
     expect(prisma.team.findMany).toHaveBeenCalledWith({
       where: standalone,

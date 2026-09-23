@@ -13,10 +13,10 @@ const actor = { userId: 2, userRole: UserPermissionRole.USER };
 const team = { id: 10, name: "Sales", slug: "sales", bio: null, timeZone: "Europe/London", logoUrl: null };
 
 const teamRepository = {
-  create: vi.fn(),
+  createWithOwner: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
-  findById: vi.fn(),
+  findStandaloneById: vi.fn(),
   findIdBySlugAmongTopLevelTeams: vi.fn(),
   deleteLogos: vi.fn(),
   countUpcomingBookings: vi.fn(),
@@ -60,9 +60,9 @@ const expectError = async (promise: Promise<unknown>, code: ErrorCode, message?:
 describe("TeamService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    teamRepository.findById.mockResolvedValue(team);
+    teamRepository.findStandaloneById.mockResolvedValue(team);
     teamRepository.findIdBySlugAmongTopLevelTeams.mockResolvedValue(null);
-    teamRepository.create.mockResolvedValue(team);
+    teamRepository.createWithOwner.mockResolvedValue(team);
     teamRepository.update.mockResolvedValue(team);
     membershipRepository.countAcceptedOwners.mockResolvedValue(2);
     givenMemberships({});
@@ -71,14 +71,14 @@ describe("TeamService", () => {
   describe("createTeam", () => {
     it("only lets the instance admin create teams", async () => {
       await expectError(service.createTeam(actor, { name: "Sales" }), ErrorCode.Forbidden);
-      expect(teamRepository.create).not.toHaveBeenCalled();
+      expect(teamRepository.createWithOwner).not.toHaveBeenCalled();
     });
 
     it("slugifies the slug, checks it among top-level teams and makes the creator an accepted OWNER", async () => {
       await service.createTeam(instanceAdmin, { name: "Sales Team", slug: "Sales Team!", bio: "Hi" });
 
       expect(teamRepository.findIdBySlugAmongTopLevelTeams).toHaveBeenCalledWith({ slug: "sales-team" });
-      expect(teamRepository.create).toHaveBeenCalledWith({
+      expect(teamRepository.createWithOwner).toHaveBeenCalledWith({
         name: "Sales Team",
         slug: "sales-team",
         bio: "Hi",
@@ -90,7 +90,7 @@ describe("TeamService", () => {
     it("derives the slug from the name when none is given", async () => {
       await service.createTeam(instanceAdmin, { name: "Customer Success" });
 
-      expect(teamRepository.create).toHaveBeenCalledWith(
+      expect(teamRepository.createWithOwner).toHaveBeenCalledWith(
         expect.objectContaining({ slug: "customer-success" })
       );
     });
@@ -99,7 +99,7 @@ describe("TeamService", () => {
       teamRepository.findIdBySlugAmongTopLevelTeams.mockResolvedValue({ id: 99 });
 
       await expectError(service.createTeam(instanceAdmin, { name: "Sales" }), ErrorCode.BadRequest, /slug/i);
-      expect(teamRepository.create).not.toHaveBeenCalled();
+      expect(teamRepository.createWithOwner).not.toHaveBeenCalled();
     });
 
     it("rejects a name that slugifies to nothing", async () => {
@@ -166,67 +166,19 @@ describe("TeamService", () => {
     });
 
     it("returns NotFound for a team that does not exist", async () => {
-      teamRepository.findById.mockResolvedValue(null);
+      teamRepository.findStandaloneById.mockResolvedValue(null);
 
       await expectError(service.updateTeam(instanceAdmin, 10, { name: "New" }), ErrorCode.NotFound);
     });
 
-    it.each([
-      ["a plain string", "not-an-image"],
-      ["a non-image data URL", "data:text/html;base64,PGh0bWw+"],
-      ["an unlisted image type", "data:image/bmp;base64,AAAA"],
-      // The avatar route only strips png/jpeg prefixes (SVG is converted to PNG on upload), so these would render broken.
-      ["a WebP image", "data:image/webp;base64,AAAA"],
-      ["a GIF image", "data:image/gif;base64,AAAA"],
-      ["a data URL without base64", "data:image/png,AAAA"],
-      ["base64 with characters outside the alphabet", "data:image/png;base64,AA*A"],
-      ["base64 with more than two padding characters", "data:image/png;base64,AAAA==="],
-      ["an empty base64 body", "data:image/png;base64,"],
-      ["a body of padding only", "data:image/png;base64,=="],
-    ])("rejects %s as a logo", async (_label, logo) => {
-      await expectError(service.updateTeam(instanceAdmin, 10, { logo }), ErrorCode.BadRequest, /logo/i);
-      expect(uploadLogo).not.toHaveBeenCalled();
-      expect(teamRepository.update).not.toHaveBeenCalled();
-    });
-
-    it.each(["png", "jpeg", "svg+xml"])("accepts a %s logo", async (type) => {
-      uploadLogo.mockResolvedValue("/api/avatar/ok.png");
-
-      await service.updateTeam(instanceAdmin, 10, { logo: `data:image/${type};base64,AAAA` });
-
-      expect(uploadLogo).toHaveBeenCalled();
-    });
-
-    it("rejects a logo larger than 2 MB once decoded, and accepts exactly 2 MB", async () => {
-      const base64Of = (bytes: number) => Buffer.alloc(bytes).toString("base64");
-
+    it("rejects an invalid logo before uploading or saving anything", async () => {
       await expectError(
-        service.updateTeam(instanceAdmin, 10, {
-          logo: `data:image/png;base64,${base64Of(2 * 1024 * 1024 + 1)}`,
-        }),
+        service.updateTeam(instanceAdmin, 10, { logo: "data:image/bmp;base64,AAAA" }),
         ErrorCode.BadRequest,
-        /2 MB/
+        /logo/i
       );
       expect(uploadLogo).not.toHaveBeenCalled();
-
-      uploadLogo.mockResolvedValue("/api/avatar/ok.png");
-      await service.updateTeam(instanceAdmin, 10, {
-        logo: `data:image/png;base64,${base64Of(2 * 1024 * 1024)}`,
-      });
-      expect(uploadLogo).toHaveBeenCalledTimes(1);
-    });
-
-    it("cannot be bypassed by padding a large image with trailing '='", async () => {
-      const sixMegabytes = Buffer.alloc(6 * 1024 * 1024).toString("base64");
-
-      for (const padded of [`${sixMegabytes}${"=".repeat(20 * 1024 * 1024)}`, `${sixMegabytes}==`]) {
-        await expectError(
-          service.updateTeam(instanceAdmin, 10, { logo: `data:image/png;base64,${padded}` }),
-          ErrorCode.BadRequest,
-          /logo/i
-        );
-      }
-      expect(uploadLogo).not.toHaveBeenCalled();
+      expect(teamRepository.update).not.toHaveBeenCalled();
     });
   });
 
@@ -252,7 +204,7 @@ describe("TeamService", () => {
     });
 
     it("returns NotFound for a team that does not exist", async () => {
-      teamRepository.findById.mockResolvedValue(null);
+      teamRepository.findStandaloneById.mockResolvedValue(null);
 
       await expectError(service.deleteTeam(instanceAdmin, 10), ErrorCode.NotFound);
     });
@@ -273,7 +225,7 @@ describe("TeamService", () => {
     });
 
     it("returns NotFound for a team that does not exist", async () => {
-      teamRepository.findById.mockResolvedValue(null);
+      teamRepository.findStandaloneById.mockResolvedValue(null);
 
       await expectError(service.countUpcomingBookings(instanceAdmin, 10), ErrorCode.NotFound);
     });
@@ -310,7 +262,7 @@ describe("TeamService", () => {
       expect(membershipRepository.createAccepted).toHaveBeenCalledWith({ teamId: 10, userId: 5, role });
     });
 
-    it("points an unknown email to the admin add-user page", async () => {
+    it("tells the admin to create the user first for an unknown email", async () => {
       userRepository.findByEmail.mockResolvedValue(null);
 
       await expectError(
@@ -319,7 +271,7 @@ describe("TeamService", () => {
           role: MembershipRole.MEMBER,
         }),
         ErrorCode.NotFound,
-        /\/settings\/admin\/users\/add/
+        /Create the user first\.$/
       );
       expect(membershipRepository.createAccepted).not.toHaveBeenCalled();
     });
@@ -338,7 +290,7 @@ describe("TeamService", () => {
     });
 
     it("returns NotFound for a team that does not exist", async () => {
-      teamRepository.findById.mockResolvedValue(null);
+      teamRepository.findStandaloneById.mockResolvedValue(null);
 
       await expectError(
         service.addMemberByEmail(instanceAdmin, 10, {
@@ -413,12 +365,12 @@ describe("TeamService", () => {
       await expectError(service.changeMemberRole(actor, 10, 5, MembershipRole.ADMIN), ErrorCode.NotFound);
     });
 
-    it("returns NotFound for an organisation or child team, which findById does not return", async () => {
+    it("returns NotFound for an organisation or child team, which findStandaloneById does not return", async () => {
       givenMemberships({ 2: { role: MembershipRole.OWNER }, 5: { role: MembershipRole.MEMBER } });
-      teamRepository.findById.mockResolvedValue(null);
+      teamRepository.findStandaloneById.mockResolvedValue(null);
 
       await expectError(service.changeMemberRole(actor, 10, 5, MembershipRole.ADMIN), ErrorCode.NotFound);
-      expect(teamRepository.findById).toHaveBeenCalledWith({ id: 10 });
+      expect(teamRepository.findStandaloneById).toHaveBeenCalledWith({ id: 10 });
       expect(membershipRepository.updateRole).not.toHaveBeenCalled();
     });
   });
@@ -464,10 +416,10 @@ describe("TeamService", () => {
       ["a member leaving", 2],
     ])("returns NotFound on an organisation or child team for %s", async (_label, userId) => {
       givenMemberships({ 2: { role: MembershipRole.OWNER }, 5: { role: MembershipRole.MEMBER } });
-      teamRepository.findById.mockResolvedValue(null);
+      teamRepository.findStandaloneById.mockResolvedValue(null);
 
       await expectError(service.removeMember(actor, 10, userId), ErrorCode.NotFound);
-      expect(teamRepository.findById).toHaveBeenCalledWith({ id: 10 });
+      expect(teamRepository.findStandaloneById).toHaveBeenCalledWith({ id: 10 });
       expect(membershipRepository.deleteByUserIdAndTeamId).not.toHaveBeenCalled();
     });
 
