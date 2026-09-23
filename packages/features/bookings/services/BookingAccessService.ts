@@ -1,23 +1,16 @@
+import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import type { PrismaClient } from "@calcom/prisma";
 import { MembershipRole } from "@calcom/prisma/enums";
 import { BookingRepository } from "../repositories/BookingRepository";
 
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
+const TEAM_BOOKING_READER_ROLES = [MembershipRole.ADMIN, MembershipRole.OWNER];
 
 type BookingForAccessCheck = NonNullable<Awaited<ReturnType<BookingRepository["findByUidIncludeEventType"]>>>;
 
 export class BookingAccessService {
-  private permissionCheckService: PermissionCheckService;
-
-  constructor(private prismaClient: PrismaClient) {
-    this.permissionCheckService = new PermissionCheckService();
-  }
+  constructor(private prismaClient: PrismaClient) {}
 
   private isUserAHost(userId: number, booking: BookingForAccessCheck): boolean {
     const hostMap = new Map<number, { id: number; email: string }>();
@@ -49,9 +42,10 @@ export class BookingAccessService {
    * Determines if a user has access to a booking based on:
    * 1. Being the booking organizer
    * 2. Being one of the hosts in a multi-host booking
-   * 3. Being a team/org admin where the event type belongs (uses PBAC if enabled)
-   * 4. Being an org admin where the booking organizer belongs (uses PBAC if enabled, for personal bookings)
-   * 5. Being a team admin of any team the booking organizer belongs to (uses PBAC if enabled, for personal bookings)
+   * 3. Being an accepted ADMIN/OWNER of the event type's team (or of its parent team for managed events)
+   * 4. Organisation admins get no access: this fork has standalone teams only
+   * 5. Being an accepted ADMIN/OWNER of any team the booking organizer belongs to (personal bookings)
+   * The instance admin passes every team check in 3 and 5.
    */
   async doesUserIdHaveAccessToBooking({
     userId,
@@ -80,27 +74,14 @@ export class BookingAccessService {
     // Case 2: User is one of the hosts
     if (this.isUserAHost(userId, booking)) return true;
 
-    // Case 3: If booking has a teamId, check if user has access to team bookings
-    if (booking.eventType?.teamId) {
-      const teamId = booking.eventType.teamId;
+    const teamPermissionService = new TeamPermissionService(new MembershipRepository(this.prismaClient));
+    const userRole = (await userRepo.findRoleById({ id: userId }))?.role;
+    const isTeamAdmin = (teamId: number) =>
+      teamPermissionService.hasTeamRole({ userId, userRole, teamId, roles: TEAM_BOOKING_READER_ROLES });
 
-      const hasAccess = await this.permissionCheckService.checkPermission({
-        userId,
-        teamId,
-        permission: "booking.readTeamBookings",
-        fallbackRoles: [MembershipRole.OWNER, MembershipRole.ADMIN],
-      });
-      return hasAccess;
-    }
-
-    // For managed events (child event types), check the parent's teamId
-    if (booking.eventType?.parent?.teamId) {
-      const isAdminOrUser = await userRepo.isAdminOfTeamOrParentOrg({
-        userId,
-        teamId: booking.eventType.parent.teamId,
-      });
-      return isAdminOrUser;
-    }
+    // Case 3: team event type, or the parent team of a managed (child) event type
+    const bookingTeamId = booking.eventType?.teamId ?? booking.eventType?.parent?.teamId;
+    if (bookingTeamId) return isTeamAdmin(bookingTeamId);
 
     if (!booking.userId) return false;
 
@@ -108,30 +89,9 @@ export class BookingAccessService {
 
     if (!bookingOwner) return false;
 
-    // Case 4: Check if user is admin of booking organizer's organization
-    if (bookingOwner.organizationId) {
-      const orgId = bookingOwner.organizationId;
-
-      const hasAccess = await this.permissionCheckService.checkPermission({
-        userId,
-        teamId: orgId,
-        permission: "booking.readOrgBookings",
-        fallbackRoles: [MembershipRole.OWNER, MembershipRole.ADMIN],
-      });
-      if (hasAccess) return true;
-    }
-
     // Case 5: Check if user is admin of any team the booking organizer belongs to
     for (const membership of bookingOwner.teams) {
-      const teamId = membership.teamId;
-
-      const hasAccess = await this.permissionCheckService.checkPermission({
-        userId,
-        teamId,
-        permission: "booking.readTeamBookings",
-        fallbackRoles: [MembershipRole.OWNER, MembershipRole.ADMIN],
-      });
-      if (hasAccess) return true;
+      if (await isTeamAdmin(membership.teamId)) return true;
     }
 
     return false;
