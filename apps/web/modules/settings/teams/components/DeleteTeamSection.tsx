@@ -19,7 +19,8 @@ export function DeleteTeamSection({ team }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [serverError, setServerError] = useState<string | null>(null);
-  const slug = team.slug ?? "";
+  // A team without a slug is confirmed by its name, so the gate never opens on an empty string.
+  const confirmValue = team.slug ?? team.name;
 
   // Only counted once the admin opens the dialog, so viewing the profile costs no booking query.
   const upcomingBookings = trpc.viewer.teams.countUpcomingBookings.useQuery(
@@ -35,7 +36,19 @@ export function DeleteTeamSection({ team }: Props) {
     onError: (err) => setServerError(err.message),
   });
 
-  const canConfirm = confirmation === slug && !upcomingBookings.isPending && !deleteTeam.isPending;
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      setConfirmation("");
+      setServerError(null);
+    }
+  };
+
+  const canConfirm =
+    confirmation.length > 0 &&
+    confirmation === confirmValue &&
+    !upcomingBookings.isPending &&
+    !deleteTeam.isPending;
 
   return (
     <div className="mt-6 rounded-lg border border-error p-6">
@@ -44,12 +57,7 @@ export function DeleteTeamSection({ team }: Props) {
       <Button className="mt-4" color="destructive" StartIcon="trash" onClick={() => setIsOpen(true)}>
         {t("delete_team")}
       </Button>
-      <Dialog
-        open={isOpen}
-        onOpenChange={(open) => {
-          setIsOpen(open);
-          if (!open) setConfirmation("");
-        }}>
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
         <DialogContent type="confirmation" title={t("delete_team")}>
           <div className="stack-y-4">
             {serverError && (
@@ -64,14 +72,14 @@ export function DeleteTeamSection({ team }: Props) {
             )}
             <TextField
               name="confirmTeamSlug"
-              label={t("type_team_slug_to_confirm", { slug })}
+              label={t("type_team_slug_to_confirm", { slug: confirmValue })}
               value={confirmation}
               autoComplete="off"
               onChange={(event) => setConfirmation(event.target.value)}
             />
           </div>
           <DialogFooter>
-            <Button color="secondary" onClick={() => setIsOpen(false)}>
+            <Button color="secondary" onClick={() => handleOpenChange(false)}>
               {t("cancel")}
             </Button>
             <Button

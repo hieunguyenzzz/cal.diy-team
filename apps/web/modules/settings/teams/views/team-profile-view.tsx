@@ -2,35 +2,28 @@
 
 import SettingsHeader from "@calcom/features/settings/appDir/SettingsHeader";
 import { WEBAPP_URL } from "@calcom/lib/constants";
-import { getPlaceholderAvatar } from "@calcom/lib/defaultAvatarImage";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import type { RouterOutputs } from "@calcom/trpc/react";
 import { trpc } from "@calcom/trpc/react";
-import { Avatar } from "@calcom/ui/components/avatar";
 import { Button } from "@calcom/ui/components/button";
 import { EmptyScreen } from "@calcom/ui/components/empty-screen";
 import { Form, Label, TextAreaField, TextField } from "@calcom/ui/components/form";
-import { ImageUploader } from "@calcom/ui/components/image-uploader";
 import { SkeletonText } from "@calcom/ui/components/skeleton";
 import { showToast } from "@calcom/ui/components/toast";
 import { TimezoneSelect } from "@calcom/web/modules/timezone/components/TimezoneSelect";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { DeleteTeamSection } from "../components/DeleteTeamSection";
+import { TeamLogoField } from "../components/TeamLogoField";
 import { canManageTeam } from "../lib/canManageTeam";
 
 type Team = RouterOutputs["viewer"]["teams"]["get"];
 type FormValues = { name: string; slug: string; timeZone: string; bio: string; logo: string | null };
 
-// Mirrors the server's validateTeamLogo limit so an oversized logo is caught before upload.
-const MAX_LOGO_BYTES = 2 * 1024 * 1024;
-const decodedSize = (dataUrl: string) => Math.floor(((dataUrl.split(",")[1] ?? "").length * 3) / 4);
-
 function TeamProfileForm({ team, canEdit }: { team: Team; canEdit: boolean }) {
   const { t } = useLocale();
   const utils = trpc.useUtils();
   const [serverError, setServerError] = useState<string | null>(null);
-  const [logoError, setLogoError] = useState<string | null>(null);
   const form = useForm<FormValues>({
     defaultValues: {
       name: team.name,
@@ -87,36 +80,7 @@ function TeamProfileForm({ team, canEdit }: { team: Team; canEdit: boolean }) {
         control={form.control}
         name="logo"
         render={({ field: { value, onChange } }) => (
-          <div className="flex items-center gap-4">
-            <Avatar alt={team.name} size="lg" imageSrc={getPlaceholderAvatar(value, team.name)} />
-            <div>
-              <p className="mb-2 font-medium text-sm">{t("team_logo")}</p>
-              {canEdit && (
-                <div className="flex gap-2">
-                  <ImageUploader
-                    target="logo"
-                    id="team-logo-upload"
-                    buttonMsg={t("upload_logo")}
-                    imageSrc={value ?? undefined}
-                    handleAvatarChange={(newLogo) => {
-                      if (decodedSize(newLogo) > MAX_LOGO_BYTES) {
-                        setLogoError(t("team_logo_too_large"));
-                        return;
-                      }
-                      setLogoError(null);
-                      onChange(newLogo);
-                    }}
-                  />
-                  {value !== null && (
-                    <Button color="minimal" onClick={() => onChange(null)}>
-                      {t("remove_logo")}
-                    </Button>
-                  )}
-                </div>
-              )}
-              {logoError && <p className="mt-1 text-error text-sm">{logoError}</p>}
-            </div>
-          </div>
+          <TeamLogoField teamName={team.name} value={value} onChange={onChange} canEdit={canEdit} />
         )}
       />
       <TextField
@@ -177,8 +141,6 @@ export default function TeamProfileView({
   const { t } = useLocale();
   // FORBIDDEN and NOT_FOUND are final answers, so don't retry them.
   const { data: team, isPending, error } = trpc.viewer.teams.get.useQuery({ teamId }, { retry: false });
-  const { data: teams } = trpc.viewer.teams.list.useQuery();
-  const role = teams?.find((listed) => listed.id === teamId)?.role ?? null;
 
   return (
     <SettingsHeader title={t("profile")} description={t("profile_team_description")} borderInShellHeader>
@@ -197,7 +159,7 @@ export default function TeamProfileView({
         <SkeletonText className="h-40 w-full" />
       ) : (
         <>
-          <TeamProfileForm key={team.id} team={team} canEdit={canManageTeam({ role }, isInstanceAdmin)} />
+          <TeamProfileForm key={team.id} team={team} canEdit={canManageTeam(team, isInstanceAdmin)} />
           {isInstanceAdmin && <DeleteTeamSection team={team} />}
         </>
       )}

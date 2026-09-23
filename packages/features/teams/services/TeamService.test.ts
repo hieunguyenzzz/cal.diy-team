@@ -97,15 +97,36 @@ describe("TeamService", () => {
   });
 
   describe("getTeam", () => {
-    it("returns the profile to an accepted member of any role", async () => {
-      givenMemberships({ 2: { role: MembershipRole.MEMBER } });
+    it.each([
+      MembershipRole.MEMBER,
+      MembershipRole.ADMIN,
+      MembershipRole.OWNER,
+    ])("returns the profile with the caller's role to an accepted %s", async (role) => {
+      givenMemberships({ 2: { role } });
 
-      await expect(service.getTeam(actor, 10)).resolves.toEqual(team);
+      await expect(service.getTeam(actor, 10)).resolves.toEqual({ ...team, role });
       expect(teamRepository.findStandaloneById).toHaveBeenCalledWith({ id: 10 });
     });
 
-    it("returns the profile to the instance admin without a membership", async () => {
-      await expect(service.getTeam(instanceAdmin, 10)).resolves.toEqual(team);
+    it("returns the profile with a null role to the instance admin without a membership", async () => {
+      await expect(service.getTeam(instanceAdmin, 10)).resolves.toEqual({ ...team, role: null });
+    });
+
+    it("returns the instance admin's own role when they are a member", async () => {
+      givenMemberships({ 1: { role: MembershipRole.OWNER } });
+
+      await expect(service.getTeam(instanceAdmin, 10)).resolves.toEqual({
+        ...team,
+        role: MembershipRole.OWNER,
+      });
+    });
+
+    it("looks up the caller's membership once", async () => {
+      givenMemberships({ 2: { role: MembershipRole.MEMBER } });
+
+      await service.getTeam(actor, 10);
+
+      expect(membershipRepository.findRoleAndAcceptedByUserIdAndTeamId).toHaveBeenCalledTimes(1);
     });
 
     it("refuses non-members and pending invitees", async () => {

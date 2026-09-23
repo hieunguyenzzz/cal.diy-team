@@ -1,19 +1,22 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TeamProfileView from "./team-profile-view";
 
-const { getQuery, listQuery, mutate, invalidateGet, invalidateList, mutationOptions } = vi.hoisted(() => ({
-  getQuery: vi.fn(),
-  listQuery: vi.fn(),
-  mutate: vi.fn(),
-  invalidateGet: vi.fn(),
-  invalidateList: vi.fn(),
-  mutationOptions: {} as {
-    onSuccess?: (team: unknown) => Promise<void>;
-    onError?: (err: { message: string }) => void;
-  },
-}));
+const { getQuery, listQuery, mutate, invalidateGet, invalidateList, mutationOptions, uploader } = vi.hoisted(
+  () => ({
+    getQuery: vi.fn(),
+    listQuery: vi.fn(),
+    uploader: { next: "data:image/png;base64,AAAA" },
+    mutate: vi.fn(),
+    invalidateGet: vi.fn(),
+    invalidateList: vi.fn(),
+    mutationOptions: {} as {
+      onSuccess?: (team: unknown) => Promise<void>;
+      onError?: (err: { message: string }) => void;
+    },
+  })
+);
 vi.mock("@calcom/trpc/react", () => ({
   trpc: {
     useUtils: () => ({
@@ -60,7 +63,7 @@ vi.mock("@calcom/ui/components/image-uploader", () => ({
     buttonMsg: string;
     handleAvatarChange: (src: string) => void;
   }) => (
-    <button type="button" onClick={() => handleAvatarChange("data:image/png;base64,AAAA")}>
+    <button type="button" onClick={() => handleAvatarChange(uploader.next)}>
       {buttonMsg}
     </button>
   ),
@@ -90,8 +93,7 @@ const team = {
 };
 
 const givenTeam = (role: string | null) => {
-  getQuery.mockReturnValue({ data: team, isPending: false, error: null });
-  listQuery.mockReturnValue({ data: [{ ...team, role, memberCount: null }] });
+  getQuery.mockReturnValue({ data: { ...team, role }, isPending: false, error: null });
 };
 
 const field = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
@@ -99,6 +101,16 @@ const field = (label: string) => screen.getByLabelText(label) as HTMLInputElemen
 describe("TeamProfileView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    uploader.next = "data:image/png;base64,AAAA";
+  });
+
+  it("decides editability from teams.get alone, without the teams list", () => {
+    givenTeam("OWNER");
+
+    render(<TeamProfileView teamId={10} isInstanceAdmin={false} />);
+
+    expect(listQuery).not.toHaveBeenCalled();
+    expect(field("team_name").disabled).toBe(false);
   });
 
   it("lets a team owner edit, and previews the public URL", () => {
@@ -142,7 +154,6 @@ describe("TeamProfileView", () => {
     ["NOT_FOUND", "team_not_found"],
   ])("shows a %s state instead of the form", (code, message) => {
     getQuery.mockReturnValue({ data: undefined, isPending: false, error: { data: { code }, message: "x" } });
-    listQuery.mockReturnValue({ data: [] });
 
     render(<TeamProfileView teamId={10} isInstanceAdmin={false} />);
 
@@ -187,5 +198,32 @@ describe("TeamProfileView", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(
       'The slug "sales" is already taken by another team'
     );
+  });
+
+  it("rejects a logo over 2 MB without changing the current one", async () => {
+    givenTeam("OWNER");
+    uploader.next = `data:image/png;base64,${"A".repeat(Math.ceil((2 * 1024 * 1024 + 1) / 3) * 4)}`;
+    render(<TeamProfileView teamId={10} isInstanceAdmin={false} />);
+
+    fireEvent.click(screen.getByText("upload_logo"));
+
+    expect(screen.getByText("team_logo_too_large")).toBeTruthy();
+    expect((screen.getByText("update").closest("button") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("disables Update again once a save succeeds", async () => {
+    givenTeam("OWNER");
+    render(<TeamProfileView teamId={10} isInstanceAdmin={false} />);
+    const update = () => screen.getByText("update").closest("button") as HTMLButtonElement;
+
+    fireEvent.change(field("team_name"), { target: { value: "Sales EU" } });
+    expect(update().disabled).toBe(false);
+
+    await act(async () => {
+      await mutationOptions.onSuccess?.({ ...team, name: "Sales EU", role: "OWNER" });
+    });
+
+    expect(update().disabled).toBe(true);
+    expect(field("team_name").value).toBe("Sales EU");
   });
 });

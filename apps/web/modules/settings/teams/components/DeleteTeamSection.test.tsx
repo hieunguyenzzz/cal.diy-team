@@ -106,4 +106,26 @@ describe("DeleteTeamSection", () => {
     expect(invalidate).toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/settings/teams");
   });
+
+  it("confirms against the team name when the team has no slug", () => {
+    render(<DeleteTeamSection team={{ ...team, slug: null }} />);
+    fireEvent.click(screen.getByText("delete_team"));
+    const input = screen.getByLabelText('type_team_slug_to_confirm:{"slug":"Sales"}');
+
+    expect(confirmButton().disabled).toBe(true);
+    fireEvent.change(input, { target: { value: "Sales" } });
+    expect(confirmButton().disabled).toBe(false);
+  });
+
+  it("clears a server error when the dialog is closed", async () => {
+    render(<DeleteTeamSection team={team} />);
+    fireEvent.click(screen.getByText("delete_team"));
+    mutationOptions.onError?.({ message: "Could not delete" });
+    expect(await screen.findByRole("alert")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("cancel"));
+    fireEvent.click(screen.getByText("delete_team"));
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

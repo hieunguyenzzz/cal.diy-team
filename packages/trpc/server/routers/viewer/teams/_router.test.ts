@@ -109,7 +109,7 @@ describe("viewer.teams router", () => {
     it("returns the team to an accepted member", async () => {
       signInAs(UserPermissionRole.USER, MembershipRole.MEMBER);
 
-      await expect(caller.get({ teamId: 10 })).resolves.toEqual(team);
+      await expect(caller.get({ teamId: 10 })).resolves.toEqual({ ...team, role: MembershipRole.MEMBER });
     });
 
     it("is forbidden to non-members", async () => {
