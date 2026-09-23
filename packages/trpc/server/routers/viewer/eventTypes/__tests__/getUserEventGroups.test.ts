@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@calcom/prisma";
-import { MembershipRole } from "@calcom/prisma/enums";
+import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 import { TRPCError } from "@trpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getUserEventGroups } from "../getUserEventGroups.handler";
@@ -256,6 +256,50 @@ describe("getUserEventGroups", () => {
         canCreateEventTypes: true,
         canUpdateEventTypes: true,
         canDeleteEventTypes: canDelete,
+      });
+    });
+  });
+
+  describe("Instance admin", () => {
+    it("gets full team permissions even as a plain MEMBER, matching hasTeamRole", async () => {
+      const { ProfileRepository } = await import("@calcom/features/profile/repositories/ProfileRepository");
+
+      const membership = {
+        id: 1,
+        teamId: 100,
+        userId: 1,
+        accepted: true,
+        role: MembershipRole.MEMBER,
+        team: {
+          id: 100,
+          name: "Test Team",
+          slug: "test-team",
+          logoUrl: null,
+          parentId: null,
+          parent: null,
+          metadata: {},
+        },
+      } as unknown as NonNullable<
+        Awaited<
+          ReturnType<
+            typeof import("@calcom/features/membership/repositories/MembershipRepository").MembershipRepository.findAllByUpIdIncludeTeam
+          >
+        >
+      >[0];
+
+      vi.mocked(ProfileRepository.findByUpIdWithAuth).mockResolvedValue(mockProfile);
+      mockFindAllByUpIdIncludeTeam.mockResolvedValue([membership]);
+      mockFilterTeamsByEventTypeReadPermission.mockResolvedValue([membership]);
+
+      const result = await getUserEventGroups({
+        ctx: { ...mockCtx, user: { ...mockUser, role: UserPermissionRole.ADMIN } },
+        input: null,
+      });
+
+      expect(result.profiles.find((profile) => profile.teamId === 100)).toMatchObject({
+        canCreateEventTypes: true,
+        canUpdateEventTypes: true,
+        canDeleteEventTypes: true,
       });
     });
   });

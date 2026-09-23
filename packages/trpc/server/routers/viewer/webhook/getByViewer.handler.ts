@@ -1,9 +1,7 @@
 import { getWebhookFeature } from "@calcom/features/di/webhooks/containers/webhook";
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
-import {
-  TEAM_ADMIN_ROLES,
-  TeamPermissionService,
-} from "@calcom/features/teams/services/TeamPermissionService";
+import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import type { WebhookGroup } from "@calcom/features/webhooks/lib/dto/types";
 import { prisma } from "@calcom/prisma";
 import { UserPermissionRole } from "@calcom/prisma/enums";

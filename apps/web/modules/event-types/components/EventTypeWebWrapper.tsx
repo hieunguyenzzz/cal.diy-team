@@ -18,18 +18,10 @@ import { revalidateEventTypeEditPage } from "@calcom/web/app/(use-page-wrapper)/
 import { TRPCClientError } from "@trpc/react-query";
 import dynamic from "next/dynamic";
 import { useRouter as useAppRouter, usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { EventType as EventTypeComponent } from "./EventType";
-
-type EventPermissions = {
-  eventTypes: {
-    canRead: boolean;
-    canCreate: boolean;
-    canUpdate: boolean;
-    canDelete: boolean;
-  };
-};
 
 const ManagedEventTypeDialog = dynamic(
   () => import("@calcom/features/eventtypes/components/dialogs/ManagedEventDialog")
@@ -65,20 +57,11 @@ const EventWebhooksTab = dynamic(() =>
 export type EventTypeWebWrapperProps = {
   id: number;
   data: RouterOutputs["viewer"]["eventTypes"]["get"];
-  permissions?: EventPermissions;
 };
 
 export const EventTypeWebWrapper = ({
   id,
   data: serverFetchedData,
-  permissions = {
-    eventTypes: {
-      canRead: false,
-      canCreate: false,
-      canUpdate: false,
-      canDelete: false,
-    },
-  },
 }: EventTypeWebWrapperProps) => {
   const { data: eventTypeQueryData } = trpc.viewer.eventTypes.get.useQuery(
     { id },
@@ -113,6 +96,7 @@ const EventTypeWeb = ({
   const pathname = usePathname();
   const appRouter = useAppRouter();
   const { data: user, isPending: isLoggedInUserPending } = useMeQuery();
+  const { data: session } = useSession();
   const isTeamEventTypeDeleted = useRef(false);
   const leaveWithoutAssigningHosts = useRef(false);
   const [isOpenAssignmentWarnDialog, setIsOpenAssignmentWarnDialog] = useState<boolean>(false);
@@ -330,6 +314,7 @@ const EventTypeWeb = ({
   return (
     <EventTypeComponent
       {...rest}
+      userRole={session?.user.role}
       tabMap={tabMap}
       onDelete={(id) => {
         deleteMutation.mutate({ id });

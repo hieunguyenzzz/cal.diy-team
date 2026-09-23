@@ -1,9 +1,7 @@
 import { getAppFromSlug } from "@calcom/app-store/utils";
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
-import {
-  TEAM_ADMIN_ROLES,
-  TeamPermissionService,
-} from "@calcom/features/teams/services/TeamPermissionService";
+import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import type { InvalidAppCredentialBannerProps } from "@calcom/features/users/types/invalidAppCredentials";
 import { prisma } from "@calcom/prisma";
 import type { TrpcSessionUser } from "@calcom/trpc/server/types";

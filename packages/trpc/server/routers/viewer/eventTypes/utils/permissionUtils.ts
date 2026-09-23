@@ -1,5 +1,5 @@
-import { roleAllowsTeamEventTypeAction } from "@calcom/features/teams/services/TeamPermissionService";
-import { MembershipRole } from "@calcom/prisma/enums";
+import { roleAllowsTeamEventTypeAction } from "@calcom/features/teams/lib/teamEventTypeRoles";
+import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 
 export interface TeamPermissions {
   canCreate: boolean;
@@ -30,7 +30,14 @@ export function getEffectiveRole(
   return orgMembership && hasHigherPrivilege(orgMembership, membershipRole) ? orgMembership : membershipRole;
 }
 
-export function getTeamPermissions(effectiveRole: MembershipRole): TeamPermissions {
+export function getTeamPermissions(
+  effectiveRole: MembershipRole,
+  userRole?: UserPermissionRole | null
+): TeamPermissions {
+  // Same rule as TeamPermissionService.hasTeamRole: the instance admin may do everything in any team.
+  if (userRole === UserPermissionRole.ADMIN) {
+    return { canRead: true, canCreate: true, canEdit: true, canDelete: true };
+  }
   return {
     canRead: roleAllowsTeamEventTypeAction(effectiveRole, "read"),
     canCreate: roleAllowsTeamEventTypeAction(effectiveRole, "create"),
@@ -41,7 +48,8 @@ export function getTeamPermissions(effectiveRole: MembershipRole): TeamPermissio
 
 export function buildTeamPermissionsMap(
   memberships: Array<{ team: { id: number; parentId?: number | null }; role: MembershipRole }>,
-  teamMemberships: MembershipWithRole[]
+  teamMemberships: MembershipWithRole[],
+  userRole?: UserPermissionRole | null
 ): Map<number, TeamPermissions> {
   const roleByTeamId = new Map(teamMemberships.map((teamM) => [teamM.teamId, teamM.membershipRole]));
 
@@ -51,7 +59,7 @@ export function buildTeamPermissionsMap(
         membership.team.parentId == null ? undefined : roleByTeamId.get(membership.team.parentId);
       const effectiveRole = getEffectiveRole(orgMembership, membership.role);
 
-      return [membership.team.id, getTeamPermissions(effectiveRole)] as const;
+      return [membership.team.id, getTeamPermissions(effectiveRole, userRole)] as const;
     })
   );
 }

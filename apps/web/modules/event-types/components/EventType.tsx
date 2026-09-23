@@ -7,6 +7,7 @@ import type {
   FormValues,
   TabMap,
 } from "@calcom/features/eventtypes/lib/types";
+import type { SessionUserRole } from "@calcom/features/teams/lib/teamEventTypeRoles";
 import type { customInputSchema } from "@calcom/prisma/zod-utils";
 import type { RouterOutputs } from "@calcom/trpc/react";
 import { Form } from "@calcom/ui/components/form";
@@ -60,6 +61,7 @@ export type EventTypeComponentProps = EventTypeSetupProps & {
   tabsNavigation: VerticalTabItemProps[];
   allowDelete?: boolean;
   saveButtonRef?: React.RefObject<HTMLButtonElement>;
+  userRole?: SessionUserRole | null;
 };
 
 export const EventType = ({
@@ -71,7 +73,7 @@ export const EventType = ({
   currentUserMembership,
   tabMap,
   isUpdating,
-  isUserOrganizationAdmin,
+  userRole,
   onDelete,
   isDeleting,
   tabsNavigation,
@@ -92,7 +94,7 @@ export const EventType = ({
         disableBorder={true}
         currentUserMembership={currentUserMembership}
         bookerUrl={eventType.bookerUrl}
-        isUserOrganizationAdmin={isUserOrganizationAdmin}
+        userRole={userRole}
         onDelete={onDelete}
         isDeleting={isDeleting}
         isPlatform={isPlatform}

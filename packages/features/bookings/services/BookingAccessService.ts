@@ -1,8 +1,6 @@
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
-import {
-  TEAM_ADMIN_ROLES,
-  TeamPermissionService,
-} from "@calcom/features/teams/services/TeamPermissionService";
+import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import type { PrismaClient } from "@calcom/prisma";
 import type { UserPermissionRole } from "@calcom/prisma/enums";
