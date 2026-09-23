@@ -48,6 +48,7 @@ export interface GetSubscribersOptions {
 
 export interface ListWebhooksOptions {
   userId: number;
+  userRole?: UserPermissionRole;
   appId?: string | null;
   eventTypeId?: number | null;
   eventTriggers?: WebhookTriggerEvents[];
