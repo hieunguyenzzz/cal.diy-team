@@ -170,6 +170,44 @@ describe("TeamService", () => {
 
       await expectError(service.updateTeam(instanceAdmin, 10, { name: "New" }), ErrorCode.NotFound);
     });
+
+    it.each([
+      ["a plain string", "not-an-image"],
+      ["a non-image data URL", "data:text/html;base64,PGh0bWw+"],
+      ["an unlisted image type", "data:image/bmp;base64,AAAA"],
+      ["a data URL without base64", "data:image/png,AAAA"],
+    ])("rejects %s as a logo", async (_label, logo) => {
+      await expectError(service.updateTeam(instanceAdmin, 10, { logo }), ErrorCode.BadRequest, /logo/i);
+      expect(uploadLogo).not.toHaveBeenCalled();
+      expect(teamRepository.update).not.toHaveBeenCalled();
+    });
+
+    it.each(["png", "jpeg", "webp", "gif", "svg+xml"])("accepts a %s logo", async (type) => {
+      uploadLogo.mockResolvedValue("/api/avatar/ok.png");
+
+      await service.updateTeam(instanceAdmin, 10, { logo: `data:image/${type};base64,AAAA` });
+
+      expect(uploadLogo).toHaveBeenCalled();
+    });
+
+    it("rejects a logo larger than 2 MB once decoded, and accepts exactly 2 MB", async () => {
+      const base64Of = (bytes: number) => Buffer.alloc(bytes).toString("base64");
+
+      await expectError(
+        service.updateTeam(instanceAdmin, 10, {
+          logo: `data:image/png;base64,${base64Of(2 * 1024 * 1024 + 1)}`,
+        }),
+        ErrorCode.BadRequest,
+        /2 MB/
+      );
+      expect(uploadLogo).not.toHaveBeenCalled();
+
+      uploadLogo.mockResolvedValue("/api/avatar/ok.png");
+      await service.updateTeam(instanceAdmin, 10, {
+        logo: `data:image/png;base64,${base64Of(2 * 1024 * 1024)}`,
+      });
+      expect(uploadLogo).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("deleteTeam", () => {
@@ -352,6 +390,15 @@ describe("TeamService", () => {
 
       await expectError(service.changeMemberRole(actor, 10, 5, MembershipRole.ADMIN), ErrorCode.NotFound);
     });
+
+    it("returns NotFound for an organisation or child team, which findById does not return", async () => {
+      givenMemberships({ 2: { role: MembershipRole.OWNER }, 5: { role: MembershipRole.MEMBER } });
+      teamRepository.findById.mockResolvedValue(null);
+
+      await expectError(service.changeMemberRole(actor, 10, 5, MembershipRole.ADMIN), ErrorCode.NotFound);
+      expect(teamRepository.findById).toHaveBeenCalledWith({ id: 10 });
+      expect(membershipRepository.updateRole).not.toHaveBeenCalled();
+    });
   });
 
   describe("removeMember", () => {
@@ -388,6 +435,18 @@ describe("TeamService", () => {
       givenMemberships({ 2: { role: MembershipRole.OWNER } });
 
       await expectError(service.removeMember(actor, 10, 5), ErrorCode.NotFound);
+    });
+
+    it.each([
+      ["an admin removing someone", 5],
+      ["a member leaving", 2],
+    ])("returns NotFound on an organisation or child team for %s", async (_label, userId) => {
+      givenMemberships({ 2: { role: MembershipRole.OWNER }, 5: { role: MembershipRole.MEMBER } });
+      teamRepository.findById.mockResolvedValue(null);
+
+      await expectError(service.removeMember(actor, 10, userId), ErrorCode.NotFound);
+      expect(teamRepository.findById).toHaveBeenCalledWith({ id: 10 });
+      expect(membershipRepository.deleteByUserIdAndTeamId).not.toHaveBeenCalled();
     });
 
     it.each([

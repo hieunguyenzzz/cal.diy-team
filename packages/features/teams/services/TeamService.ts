@@ -28,6 +28,9 @@ interface ITeamServiceDeps {
 
 const OWNER_ONLY: readonly MembershipRole[] = [MembershipRole.OWNER];
 
+const LOGO_DATA_URL = /^data:image\/(png|jpeg|webp|gif|svg\+xml);base64,/;
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+
 class TeamService {
   constructor(private readonly deps: ITeamServiceDeps) {}
 
@@ -55,6 +58,7 @@ class TeamService {
     const data: TeamProfileUpdate = { ...profile };
     if (slug !== undefined) data.slug = await this.resolveAvailableSlug(slug, teamId);
     if (logo !== undefined) {
+      if (logo !== null) this.assertValidLogo(logo);
       data.logoUrl = logo === null ? null : await this.deps.uploadLogo({ teamId, logo });
     }
 
@@ -100,6 +104,7 @@ class TeamService {
 
   async changeMemberRole(actor: Actor, teamId: number, userId: number, role: MembershipRole) {
     await this.assertTeamRole(actor, teamId, TEAM_ADMIN_ROLES, "Only team admins can change roles");
+    await this.findTeamOrThrow(teamId);
     const target = await this.findMembershipOrThrow(teamId, userId);
 
     const touchesOwner = target.role === MembershipRole.OWNER || role === MembershipRole.OWNER;
@@ -118,6 +123,7 @@ class TeamService {
     if (!isSelf) {
       await this.assertTeamRole(actor, teamId, TEAM_ADMIN_ROLES, "Only team admins can remove members");
     }
+    await this.findTeamOrThrow(teamId);
     const target = await this.findMembershipOrThrow(teamId, userId);
     // Any accepted member may leave; a pending invitee has no say in the team yet.
     const isLeaving = isSelf && target.accepted;
@@ -133,6 +139,21 @@ class TeamService {
     }
 
     await this.deps.membershipRepository.deleteByUserIdAndTeamId({ teamId, userId });
+  }
+
+  private assertValidLogo(logo: string) {
+    const prefix = LOGO_DATA_URL.exec(logo);
+    if (!prefix) {
+      throw ErrorWithCode.Factory.BadRequest(
+        "The logo must be a base64 PNG, JPEG, WebP, GIF or SVG data URL"
+      );
+    }
+    const base64 = logo.slice(prefix[0].length);
+    const padding = /=*$/.exec(base64)?.[0].length ?? 0;
+    const decodedBytes = Math.floor((base64.length * 3) / 4) - padding;
+    if (decodedBytes > MAX_LOGO_BYTES) {
+      throw ErrorWithCode.Factory.BadRequest("The logo must be 2 MB or smaller");
+    }
   }
 
   private assertInstanceAdmin(actor: Actor, message: string) {
