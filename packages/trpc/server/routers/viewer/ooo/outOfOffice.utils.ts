@@ -1,19 +1,16 @@
+import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
+import {
+  TEAM_ADMIN_ROLES,
+  TeamPermissionService,
+} from "@calcom/features/teams/services/TeamPermissionService";
 import prisma from "@calcom/prisma";
-import { MembershipRole } from "@calcom/prisma/enums";
 
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
-
+// Team ADMIN/OWNERs may manage out-of-office entries for members of their teams.
 export const isAdminForUser = async (adminUserId: number, memberUserId: number) => {
-  const permissionCheckService = new PermissionCheckService();
-  const adminTeamIds = await permissionCheckService.getTeamIdsWithPermission({
+  const adminTeamIds = await new TeamPermissionService(new MembershipRepository(prisma)).getTeamIdsWithRole({
     userId: adminUserId,
-    permission: "ooo.update",
-    fallbackRoles: [MembershipRole.ADMIN, MembershipRole.OWNER],
+    userRole: undefined,
+    roles: TEAM_ADMIN_ROLES,
   });
 
   if (adminTeamIds.length === 0) {
