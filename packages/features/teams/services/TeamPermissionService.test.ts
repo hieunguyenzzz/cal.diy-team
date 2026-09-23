@@ -332,4 +332,35 @@ describe("TeamPermissionService", () => {
       expect(rolesForTeamPermission(permission)).toEqual([]);
     });
   });
+
+  describe("getTeamIdsForEventTypeAction", () => {
+    it.each([
+      "read",
+      "update",
+    ] as const)("uses the event-type rule (any accepted member) for %s", async (action) => {
+      mockFindAcceptedTeamIdsByUserIdAndRoles.mockResolvedValue([{ teamId: 10 }]);
+
+      await expect(
+        service.getTeamIdsForEventTypeAction({ userId: 1, userRole: UserPermissionRole.USER, action })
+      ).resolves.toEqual([10]);
+      expect(mockFindAcceptedTeamIdsByUserIdAndRoles).toHaveBeenCalledWith({
+        userId: 1,
+        roles: [MembershipRole.MEMBER, MembershipRole.ADMIN, MembershipRole.OWNER],
+      });
+    });
+
+    it("requires ADMIN/OWNER for delete", async () => {
+      mockFindAcceptedTeamIdsByUserIdAndRoles.mockResolvedValue([]);
+
+      await service.getTeamIdsForEventTypeAction({
+        userId: 1,
+        userRole: UserPermissionRole.USER,
+        action: "delete",
+      });
+      expect(mockFindAcceptedTeamIdsByUserIdAndRoles).toHaveBeenCalledWith({
+        userId: 1,
+        roles: TEAM_ADMIN_ROLES,
+      });
+    });
+  });
 });

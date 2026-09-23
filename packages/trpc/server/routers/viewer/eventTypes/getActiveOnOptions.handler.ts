@@ -1,26 +1,15 @@
 import { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import { checkRateLimitAndThrowError } from "@calcom/lib/checkRateLimitAndThrowError";
 import type { PrismaClient } from "@calcom/prisma";
-import { MembershipRole, SchedulingType } from "@calcom/prisma/enums";
+import { SchedulingType } from "@calcom/prisma/enums";
 import { EventTypeMetaDataSchema, teamMetadataSchema } from "@calcom/prisma/zod-utils";
 import { TRPCError } from "@trpc/server";
 import type { TrpcSessionUser } from "../../../types";
 import type { TGetActiveOnOptionsSchema } from "./getActiveOnOptions.schema";
 
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) {
-    return true;
-  }
-  async hasPermission(..._args: unknown[]) {
-    return true;
-  }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> {
-    return [];
-  }
-}
 const listOtherTeamHandler = async (
   ..._args: unknown[]
 ): Promise<{ id: number; name: string; slug: string }[]> => [];
@@ -219,12 +208,9 @@ export const getActiveOnOptions = async ({ ctx, input }: GetActiveOnOptions) => 
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
   }
 
-  const permissionCheckService = new PermissionCheckService();
-  const teamIdsWithEventTypeUpdatePermission = await permissionCheckService.getTeamIdsWithPermission({
-    userId: user.id,
-    permission: "eventType.update",
-    fallbackRoles: [MembershipRole.ADMIN, MembershipRole.OWNER],
-  });
+  const teamIdsWithEventTypeUpdatePermission = await new TeamPermissionService(
+    new MembershipRepository(ctx.prisma)
+  ).getTeamIdsForEventTypeAction({ userId: user.id, userRole: user.role, action: "update" });
 
   const eventTypeGroups = await fetchEventTypeGroups({
     ctx,

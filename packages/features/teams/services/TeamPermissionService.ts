@@ -103,6 +103,13 @@ export class TeamPermissionService {
     return memberships.map((membership) => membership.teamId);
   }
 
+  async getTeamIdsForEventTypeAction({
+    action,
+    ...check
+  }: Omit<TeamPermissionCheck, "teamId"> & { action: TeamEventTypeAction }): Promise<number[]> {
+    return this.getTeamIdsWithRole({ ...check, roles: EVENT_TYPE_ACTION_ROLES[action] });
+  }
+
   async canPerformTeamEventTypeAction({
     action,
     ...check

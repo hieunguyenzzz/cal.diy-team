@@ -1,25 +1,17 @@
+import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
+import {
+  TEAM_ADMIN_ROLES,
+  TeamPermissionService,
+} from "@calcom/features/teams/services/TeamPermissionService";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { getUserAvatarUrl } from "@calcom/lib/getAvatarUrl";
 import prisma from "@calcom/prisma";
-import { IdentityProvider, MembershipRole } from "@calcom/prisma/enums";
+import { IdentityProvider } from "@calcom/prisma/enums";
 import { userMetadata } from "@calcom/prisma/zod-utils";
 import type { TrpcSessionUser } from "@calcom/trpc/server/types";
 import type { Session } from "next-auth";
 import type { TGetInputSchema } from "./get.schema";
-
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) {
-    return true;
-  }
-  async hasPermission(..._args: unknown[]) {
-    return true;
-  }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> {
-    return [];
-  }
-}
 
 type MeOptions = {
   ctx: {
@@ -107,11 +99,12 @@ export const getHandler = async ({ ctx, input }: MeOptions) => {
         organizationSettings: user?.profile?.organization?.organizationSettings,
       };
 
-  const permissionCheckService = new PermissionCheckService();
-  const teamsWithWritePermission = await permissionCheckService.getTeamIdsWithPermission({
+  const teamsWithWritePermission = await new TeamPermissionService(
+    new MembershipRepository(prisma)
+  ).getTeamIdsWithRole({
     userId: user.id,
-    permission: "team.update",
-    fallbackRoles: [MembershipRole.ADMIN, MembershipRole.OWNER],
+    userRole: user.role,
+    roles: TEAM_ADMIN_ROLES,
   });
   const canUpdateTeams = teamsWithWritePermission.length > 0;
 

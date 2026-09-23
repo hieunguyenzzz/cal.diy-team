@@ -94,7 +94,7 @@ describe("getHandler", () => {
   });
 });
 
-describe("getBookings - stub PermissionCheckService behavior", () => {
+describe("getBookings - team booking access", () => {
   const mockUser = {
     id: 1,
     email: "user@example.com",
@@ -154,6 +154,66 @@ describe("getBookings - stub PermissionCheckService behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockKysely = createMockKysely();
+    mockPrisma.membership.findMany = vi.fn().mockResolvedValue([]);
+  });
+
+  it("looks up the teams the user is an accepted ADMIN/OWNER of", async () => {
+    mockPrisma.user.findMany = vi.fn().mockResolvedValue([]);
+    mockPrisma.booking.groupBy = vi.fn().mockResolvedValue([]);
+
+    await getBookings({
+      user: mockUser,
+      prisma: mockPrisma,
+      kysely: mockKysely as unknown as Kysely<DB>,
+      bookingListingByStatus: ["upcoming"],
+      filters: {},
+      take: 10,
+      skip: 0,
+    });
+
+    expect(mockPrisma.membership.findMany).toHaveBeenCalledWith({
+      where: { userId: 1, accepted: true, role: { in: ["ADMIN", "OWNER"] } },
+      select: { teamId: true },
+    });
+  });
+
+  it("lets a team admin filter by a member of their team", async () => {
+    mockPrisma.membership.findMany = vi.fn().mockResolvedValue([{ teamId: 10 }]);
+    mockPrisma.user.findMany = vi.fn().mockResolvedValue([{ id: 4 }]);
+    mockPrisma.eventType.findMany = vi.fn().mockResolvedValue([]);
+    mockPrisma.booking.groupBy = vi.fn().mockResolvedValue([]);
+
+    await getBookings({
+      user: mockUser,
+      prisma: mockPrisma,
+      kysely: mockKysely as unknown as Kysely<DB>,
+      bookingListingByStatus: ["upcoming"],
+      filters: { userIds: [4] },
+      take: 10,
+      skip: 0,
+    });
+
+    expect(mockPrisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { teams: { some: { teamId: { in: [10] }, accepted: true } } } })
+    );
+  });
+
+  it("forbids filtering by users outside the caller's administered teams", async () => {
+    mockPrisma.membership.findMany = vi.fn().mockResolvedValue([]);
+    mockPrisma.user.findMany = vi.fn().mockResolvedValue([{ id: 4, email: "other@example.com" }]);
+    mockPrisma.eventType.findMany = vi.fn().mockResolvedValue([]);
+
+    await expect(
+      getBookings({
+        user: mockUser,
+        prisma: mockPrisma,
+        kysely: mockKysely as unknown as Kysely<DB>,
+        bookingListingByStatus: ["upcoming"],
+        filters: { userIds: [4] },
+        take: 10,
+        skip: 0,
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("should allow access when filtering by own userId", async () => {
