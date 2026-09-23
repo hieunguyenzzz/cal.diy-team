@@ -39,7 +39,8 @@ const privateTeamEvent = {
   instantMeetingSchedule: null,
   instantMeetingParameters: [],
   schedule: { id: 3, timeZone: "Europe/London" },
-  owner: null,
+  // Team events can still carry an owner (e.g. the creator); it is a member identity like hosts.
+  owner: { ...hostUser, id: 8, username: "owner", name: "Hidden Owner" },
   parent: null,
   teamId: 10,
   team: {
@@ -111,7 +112,9 @@ describe("getPublicEvent on a private team", () => {
     expect(event?.users).toEqual([]);
     expect(event?.subsetOfHosts).toEqual([]);
     expect(event?.hosts).toEqual([]);
+    expect(event?.owner).toBeNull();
     expect(JSON.stringify(event)).not.toContain("Hidden Host");
+    expect(JSON.stringify(event)).not.toContain("Hidden Owner");
     expect(event?.profile).toMatchObject({ name: "Private team" });
   });
 
@@ -122,6 +125,7 @@ describe("getPublicEvent on a private team", () => {
 
     expect(event?.subsetOfHosts).toHaveLength(1);
     expect(event?.hosts).toHaveLength(1);
+    expect(event?.owner).toMatchObject({ username: "owner" });
     expect(event?.subsetOfUsers).toEqual([expect.objectContaining({ username: "host" })]);
   });
 });

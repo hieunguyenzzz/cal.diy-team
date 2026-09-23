@@ -536,8 +536,8 @@ export const getPublicEvent = async (
 
   return {
     ...eventWithUserProfiles,
-    // Hosts carry each member's id, username, name and avatar, so they are hidden along with users.
-    ...(hidePrivateTeamMembers && { subsetOfHosts: [], hosts: fetchAllUsers ? [] : undefined }),
+    // Hosts and the owner carry a member's id, username, name and avatar, so they are hidden with users.
+    ...(hidePrivateTeamMembers && { owner: null, subsetOfHosts: [], hosts: fetchAllUsers ? [] : undefined }),
     bookerLayouts: bookerLayoutsSchema.parse(eventMetaData?.bookerLayouts || null),
     description: markdownToSafeHTML(eventWithUserProfiles.description),
     metadata: eventMetaData,
