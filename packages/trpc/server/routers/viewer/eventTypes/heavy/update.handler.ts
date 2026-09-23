@@ -79,6 +79,8 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     // Extract this from the input so it doesn't get saved in the db
     // eslint-disable-next-line
     userId,
+    // Ownership, like userId, is never changed by an update.
+    profileId: _profileId,
     bookingFields,
     offsetStart,
     secondaryEmailId,

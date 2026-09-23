@@ -189,6 +189,13 @@ describe("updateHandler ownership of referenced records", () => {
     expect(updateData()).toMatchObject({ schedule: { connect: { id: 66 } } });
   });
 
+  it("never writes profileId from input", async () => {
+    await updateHandler({ ctx, input: { id: 1, profileId: 555, title: "Mine" } as UpdateOptions["input"] });
+
+    expect(updateData()).not.toHaveProperty("profileId");
+    expect(updateData()).toMatchObject({ title: "Mine" });
+  });
+
   it("never writes parentId from input", async () => {
     await updateHandler({ ctx, input: { id: 1, parentId: 999, title: "Mine" } as UpdateOptions["input"] });
 
