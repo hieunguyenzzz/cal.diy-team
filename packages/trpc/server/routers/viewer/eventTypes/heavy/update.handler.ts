@@ -96,6 +96,10 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     teamId: inputTeamId,
     // Managed-event parentage is set by the server when children are created, never by an update.
     parentId: _parentId,
+    // The scalar schedule ids would bypass the ownership checks below: scheduleId is folded into
+    // `schedule` (API v2 sends it) and instantMeetingScheduleId has no sender, so it is dropped.
+    scheduleId: scalarScheduleId,
+    instantMeetingScheduleId: _instantMeetingScheduleId,
     ...rest
   } = input;
 
@@ -322,24 +326,25 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     throw new TRPCError({ code: "BAD_REQUEST", message: t(bookerLayoutsError) });
   }
 
-  if (schedule) {
+  const requestedSchedule = schedule === undefined ? scalarScheduleId : schedule;
+  if (requestedSchedule) {
     // Check that the schedule belongs to the user
     const userScheduleQuery = await ctx.prisma.schedule.findFirst({
       where: {
         userId: ctx.user.id,
-        id: schedule,
+        id: requestedSchedule,
       },
     });
     if (userScheduleQuery) {
       data.schedule = {
         connect: {
-          id: schedule,
+          id: requestedSchedule,
         },
       };
     }
   }
   // allows unsetting a schedule through { schedule: null, ... }
-  else if (null === schedule || schedule === 0) {
+  else if (null === requestedSchedule || requestedSchedule === 0) {
     data.schedule = {
       disconnect: true,
     };

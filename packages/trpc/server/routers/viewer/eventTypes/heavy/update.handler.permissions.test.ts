@@ -157,6 +157,38 @@ describe("updateHandler ownership of referenced records", () => {
     expect(updateData()).toMatchObject({ instantMeetingSchedule: { connect: { id: 77 } } });
   });
 
+  it("never writes the scalar instantMeetingScheduleId", async () => {
+    prismaMock.schedule.findFirst.mockResolvedValue(null);
+
+    await updateHandler({ ctx, input: { id: 1, instantMeetingScheduleId: 88 } as UpdateOptions["input"] });
+
+    expect(updateData()).not.toHaveProperty("instantMeetingScheduleId");
+    expect(updateData()).not.toHaveProperty("instantMeetingSchedule");
+  });
+
+  it("does not write a foreign scalar scheduleId", async () => {
+    prismaMock.schedule.findFirst.mockResolvedValue(null);
+
+    await updateHandler({ ctx, input: { id: 1, scheduleId: 66 } as UpdateOptions["input"] });
+
+    expect(prismaMock.schedule.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 1, id: 66 } })
+    );
+    expect(updateData()).not.toHaveProperty("scheduleId");
+    expect(updateData()).not.toHaveProperty("schedule");
+  });
+
+  it("connects the caller's own schedule when sent as a scalar scheduleId (API v2 sends this)", async () => {
+    prismaMock.schedule.findFirst.mockResolvedValue({ id: 66 } as Awaited<
+      ReturnType<typeof prismaMock.schedule.findFirst>
+    >);
+
+    await updateHandler({ ctx, input: { id: 1, scheduleId: 66 } as UpdateOptions["input"] });
+
+    expect(updateData()).not.toHaveProperty("scheduleId");
+    expect(updateData()).toMatchObject({ schedule: { connect: { id: 66 } } });
+  });
+
   it("never writes parentId from input", async () => {
     await updateHandler({ ctx, input: { id: 1, parentId: 999, title: "Mine" } as UpdateOptions["input"] });
 
