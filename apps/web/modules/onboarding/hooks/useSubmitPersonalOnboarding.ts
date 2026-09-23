@@ -1,10 +1,10 @@
-import { useRouter } from "next/navigation";
-
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { sessionStorage } from "@calcom/lib/webstorage";
 import { trpc } from "@calcom/trpc/react";
 import { showToast } from "@calcom/ui/components/toast";
 import { setShowWelcomeToCalcomModalFlag } from "@calcom/web/modules/shell/hooks/useWelcomeToCalcomModal";
+import { useRouter } from "next/navigation";
+import { useOnboardingStore } from "../store/onboarding-store";
 
 const ONBOARDING_REDIRECT_KEY = "onBoardingRedirect";
 const ORG_MODAL_STORAGE_KEY = "showNewOrgModal";
@@ -32,6 +32,7 @@ export const useSubmitPersonalOnboarding = () => {
   const router = useRouter();
   const { t } = useLocale();
   const utils = trpc.useUtils();
+  const { resetOnboarding } = useOnboardingStore();
 
   const { data: eventTypes } = trpc.viewer.eventTypes.list.useQuery();
   const createEventType = trpc.viewer.eventTypesHeavy.create.useMutation();
@@ -57,6 +58,10 @@ export const useSubmitPersonalOnboarding = () => {
       }
 
       await utils.viewer.me.get.refetch();
+
+      // The onboarding store persists in IndexedDB, so without this the next user to sign up in this
+      // browser would see these personal details pre-filled.
+      resetOnboarding();
 
       const redirectUrl = localStorage.getItem(ONBOARDING_REDIRECT_KEY);
       if (redirectUrl) {

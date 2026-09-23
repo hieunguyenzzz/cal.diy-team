@@ -162,14 +162,6 @@ const KBAR_ACTION_CONFIGS: ActionConfig[] = [
     href: "/settings/security/two-factor-auth",
   },
   {
-    id: "impersonation",
-    name: "user_impersonation_heading",
-    section: "security",
-    shortcut: ["u", "i"],
-    keywords: "user impersonation",
-    href: "/settings/security/impersonation",
-  },
-  {
     id: "license",
     name: "choose_a_license",
     section: "admin",
@@ -192,14 +184,6 @@ const KBAR_ACTION_CONFIGS: ActionConfig[] = [
     shortcut: ["a", "p", "i"],
     keywords: "api keys",
     href: "/settings/developer/api-keys",
-  },
-  {
-    id: "billing",
-    name: "manage_billing",
-    section: "billing",
-    shortcut: ["m", "b"],
-    keywords: "billing view manage",
-    href: "/settings/billing",
   },
 ];
 
