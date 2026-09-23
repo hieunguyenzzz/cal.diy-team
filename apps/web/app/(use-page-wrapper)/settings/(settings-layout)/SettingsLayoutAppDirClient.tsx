@@ -24,6 +24,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import type { ComponentProps } from "react";
 import React, { useEffect, useMemo, useState } from "react";
+import { TeamsSettingsNav } from "~/settings/teams/components/TeamsSettingsNav";
 import Shell from "~/shell/Shell";
 
 const getTabs = (
@@ -408,6 +409,8 @@ const SettingsSidebarContainer = ({
   permissions,
 }: SettingsSidebarContainerProps) => {
   const { t } = useLocale();
+  const session = useSession();
+  const isInstanceAdmin = session.data?.user.role === UserPermissionRole.ADMIN;
 
   const tabsWithPermissions = useTabs({
     isDelegationCredentialEnabled: false,
@@ -479,6 +482,7 @@ const SettingsSidebarContainer = ({
                 </div>
               ))}
             </div>
+            {tab.name === "developer" && <TeamsSettingsNav isInstanceAdmin={isInstanceAdmin} />}
           </React.Fragment>
         );
       })}
