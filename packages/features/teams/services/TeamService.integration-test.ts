@@ -79,6 +79,13 @@ describe("TeamService (DB)", () => {
       })
     ).toEqual({ role: MembershipRole.MEMBER, accepted: true });
 
+    const invitee = await createUser("invitee", UserPermissionRole.USER);
+    await prisma.membership.create({
+      data: { teamId: team.id, userId: invitee.id, role: MembershipRole.MEMBER, accepted: false },
+    });
+    const listed = (await service.listTeams(asAdmin())).find(({ id }) => id === team.id);
+    expect(listed?.memberCount).toBe(2);
+
     await service.changeMemberRole(asAdmin(), team.id, member.id, MembershipRole.OWNER);
     await service.changeMemberRole(asAdmin(), team.id, member.id, MembershipRole.ADMIN);
     expect(await roleOf(member.id)).toBe(MembershipRole.ADMIN);

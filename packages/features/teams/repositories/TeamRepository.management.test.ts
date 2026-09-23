@@ -90,13 +90,13 @@ describe("TeamRepository team management", () => {
     });
   });
 
-  it("lists every standalone team with a member count", async () => {
+  it("lists every standalone team with a count of accepted members only", async () => {
     await repository.listStandaloneIncludeMemberCount();
 
     expect(prisma.team.findMany).toHaveBeenCalledWith({
       where: standalone,
       orderBy: { name: "asc" },
-      select: { ...teamSelect, _count: { select: { members: true } } },
+      select: { ...teamSelect, _count: { select: { members: { where: { accepted: true } } } } },
     });
   });
 
