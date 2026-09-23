@@ -9,10 +9,11 @@ import { trpc } from "@calcom/trpc/react";
 import { Button } from "@calcom/ui/components/button";
 import { DialogClose, DialogContent, DialogFooter } from "@calcom/ui/components/dialog";
 import { showToast } from "@calcom/ui/components/toast";
+import { useCreateEventType } from "@calcom/web/modules/event-types/hooks/useCreateEventType";
 import { isValidPhoneNumber } from "libphonenumber-js/max";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
-import { useCreateEventType } from "~/event-types/hooks/useCreateEventType";
+import { TeamEventTypeForm } from "./TeamEventTypeForm";
 
 const WEBSITE_URL = process.env.NEXT_PUBLIC_WEBSITE_URL ?? "";
 
@@ -108,20 +109,48 @@ export function CreateEventTypeDialog({ profileOptions }: { profileOptions: Prof
   return (
     <Dialog
       name="new"
-      clearQueryParamsOnClose={["eventPage", "type", "description", "title", "length", "slug", "locations"]}>
+      clearQueryParamsOnClose={[
+        "eventPage",
+        "type",
+        "description",
+        "title",
+        "length",
+        "slug",
+        "locations",
+        // teamId stays: the listing uses it to keep the team's tab selected after the dialog closes.
+        "schedulingType",
+      ]}>
       <DialogContent
         type="creation"
         enableOverflow
         title={teamId ? t("add_new_team_event_type") : t("add_new_event_type")}
         description={t("new_event_type_to_book_description")}>
-        {teamId ? null : (
+        {teamId ? (
+          teamProfile && permissions.canCreateEventType ? (
+            <TeamEventTypeForm
+              form={form}
+              teamId={teamId}
+              pageSlug={teamProfile.slug}
+              urlPrefix={urlPrefix}
+              isPending={createMutation.isPending}
+              SubmitButton={SubmitButton}
+              handleSubmit={(values) => {
+                createMutation.mutate(values);
+              }}
+            />
+          ) : (
+            <p className="text-sm text-subtle">{t("error_event_type_unauthorized_create")}</p>
+          )
+        ) : (
           <CreateEventTypeForm
             urlPrefix={urlPrefix}
             isPending={createMutation.isPending}
             form={form}
             isManagedEventType={isManagedEventType}
             handleSubmit={(values) => {
-              createMutation.mutate(values);
+              // The form is shared with the team path, which sets these; a personal event type must not keep them.
+              const { teamId: _teamId, schedulingType: _schedulingType, ...personalValues } = values;
+              createMutation.mutate(personalValues);
             }}
             SubmitButton={SubmitButton}
             pageSlug={pageSlug}

@@ -26,6 +26,7 @@ export default function CreateEventTypeForm({
   isPending,
   urlPrefix,
   SubmitButton,
+  extraFields,
 }: {
   form: UseFormReturn<CreateEventTypeFormValues>;
   isManagedEventType: boolean;
@@ -34,6 +35,8 @@ export default function CreateEventTypeForm({
   isPending: boolean;
   urlPrefix?: string;
   SubmitButton: (isPending: boolean) => ReactNode;
+  // Fields a caller adds after the shared ones, e.g. the scheduling type for team event types.
+  extraFields?: ReactNode;
 }) {
   const isPlatform = useIsPlatform();
   const { t } = useLocale();
@@ -151,6 +154,7 @@ export default function CreateEventTypeForm({
             />
           </div>
         </>
+        {extraFields}
       </div>
       {SubmitButton(isPending)}
     </Form>
