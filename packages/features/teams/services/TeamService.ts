@@ -65,6 +65,14 @@ class TeamService {
     this.assertInstanceAdmin(actor, "Only instance admins can delete teams");
     await this.findTeamOrThrow(teamId);
     await this.deps.teamRepository.delete({ id: teamId });
+    await this.deps.teamRepository.deleteLogos({ teamId });
+  }
+
+  // Deleting a team keeps its bookings but unlinks them from their event type; the UI warns with this count.
+  async countUpcomingBookings(actor: Actor, teamId: number) {
+    this.assertInstanceAdmin(actor, "Only instance admins can inspect a team before deleting it");
+    await this.findTeamOrThrow(teamId);
+    return this.deps.teamRepository.countUpcomingBookings({ teamId, now: new Date() });
   }
 
   async addMemberByEmail(actor: Actor, teamId: number, input: { email: string; role: MembershipRole }) {
@@ -106,11 +114,21 @@ class TeamService {
   }
 
   async removeMember(actor: Actor, teamId: number, userId: number) {
-    await this.assertTeamRole(actor, teamId, TEAM_ADMIN_ROLES, "Only team admins can remove members");
+    const isSelf = actor.userId === userId;
+    if (!isSelf) {
+      await this.assertTeamRole(actor, teamId, TEAM_ADMIN_ROLES, "Only team admins can remove members");
+    }
     const target = await this.findMembershipOrThrow(teamId, userId);
+    // Any accepted member may leave; a pending invitee has no say in the team yet.
+    const isLeaving = isSelf && target.accepted;
+    if (isSelf && !isLeaving) {
+      await this.assertTeamRole(actor, teamId, TEAM_ADMIN_ROLES, "Only team admins can remove members");
+    }
 
     if (target.role === MembershipRole.OWNER) {
-      await this.assertTeamRole(actor, teamId, OWNER_ONLY, "Only an owner can remove an owner");
+      if (!isLeaving) {
+        await this.assertTeamRole(actor, teamId, OWNER_ONLY, "Only an owner can remove an owner");
+      }
       if (target.accepted) await this.assertNotLastOwner(teamId);
     }
 
@@ -151,6 +169,8 @@ class TeamService {
     return membership;
   }
 
+  // Read-then-write: two concurrent demotions could still leave no owner. Accepted for v1, since only a
+  // handful of instance admins manage teams here; a transaction or partial index would close it.
   private async assertNotLastOwner(teamId: number) {
     const owners = await this.deps.membershipRepository.countAcceptedOwners({ teamId });
     if (owners <= 1) {
@@ -164,6 +184,8 @@ class TeamService {
     if (!slug)
       throw ErrorWithCode.Factory.BadRequest("A team needs a name or slug made of letters or digits");
 
+    // Read-then-write: two concurrent requests could still claim the same slug. Accepted for v1 because
+    // team changes are rare and done by a few instance admins.
     const existing = await this.deps.teamRepository.findIdBySlugAmongTopLevelTeams({ slug });
     if (existing && existing.id !== currentTeamId) {
       throw ErrorWithCode.Factory.BadRequest(`The slug "${slug}" is already taken by another team`);

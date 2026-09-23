@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
-import { MembershipRole, SchedulingType } from "@calcom/prisma/enums";
+import { BookingStatus, MembershipRole, SchedulingType } from "@calcom/prisma/enums";
 import { baseEventTypeSelect } from "@calcom/prisma/selects/event-types";
 
 const publicUserSelect = {
@@ -68,6 +68,21 @@ export class TeamRepository {
 
   async delete({ id }: { id: number }) {
     return this.prismaClient.team.delete({ where: { id }, select: { id: true } });
+  }
+
+  // Avatar has no FK to Team, so a team's logo rows would outlive it; userId 0 marks a team logo.
+  async deleteLogos({ teamId }: { teamId: number }) {
+    return this.prismaClient.avatar.deleteMany({ where: { teamId, userId: 0 } });
+  }
+
+  async countUpcomingBookings({ teamId, now }: { teamId: number; now: Date }) {
+    return this.prismaClient.booking.count({
+      where: {
+        status: BookingStatus.ACCEPTED,
+        startTime: { gt: now },
+        eventType: { OR: [{ teamId }, { parent: { teamId } }] },
+      },
+    });
   }
 
   async findById({ id }: { id: number }) {

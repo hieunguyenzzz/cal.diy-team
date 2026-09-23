@@ -18,6 +18,8 @@ const teamRepository = {
   delete: vi.fn(),
   findById: vi.fn(),
   findIdBySlugAmongTopLevelTeams: vi.fn(),
+  deleteLogos: vi.fn(),
+  countUpcomingBookings: vi.fn(),
 };
 const membershipRepository = {
   findRoleAndAcceptedByUserIdAndTeamId: vi.fn(),
@@ -178,16 +180,44 @@ describe("TeamService", () => {
       expect(teamRepository.delete).not.toHaveBeenCalled();
     });
 
-    it("deletes as the instance admin", async () => {
+    it("deletes as the instance admin, removing the team's stored logo too", async () => {
       await service.deleteTeam(instanceAdmin, 10);
 
       expect(teamRepository.delete).toHaveBeenCalledWith({ id: 10 });
+      expect(teamRepository.deleteLogos).toHaveBeenCalledWith({ teamId: 10 });
+    });
+
+    it("leaves the logo alone when the delete is refused", async () => {
+      await expectError(service.deleteTeam(actor, 10), ErrorCode.Forbidden);
+
+      expect(teamRepository.deleteLogos).not.toHaveBeenCalled();
     });
 
     it("returns NotFound for a team that does not exist", async () => {
       teamRepository.findById.mockResolvedValue(null);
 
       await expectError(service.deleteTeam(instanceAdmin, 10), ErrorCode.NotFound);
+    });
+  });
+
+  describe("countUpcomingBookings", () => {
+    it("lets only the instance admin count a team's upcoming bookings", async () => {
+      givenMemberships({ 2: { role: MembershipRole.OWNER } });
+      await expectError(service.countUpcomingBookings(actor, 10), ErrorCode.Forbidden);
+      expect(teamRepository.countUpcomingBookings).not.toHaveBeenCalled();
+
+      teamRepository.countUpcomingBookings.mockResolvedValue(3);
+      await expect(service.countUpcomingBookings(instanceAdmin, 10)).resolves.toBe(3);
+      expect(teamRepository.countUpcomingBookings).toHaveBeenCalledWith({
+        teamId: 10,
+        now: expect.any(Date),
+      });
+    });
+
+    it("returns NotFound for a team that does not exist", async () => {
+      teamRepository.findById.mockResolvedValue(null);
+
+      await expectError(service.countUpcomingBookings(instanceAdmin, 10), ErrorCode.NotFound);
     });
   });
 
@@ -358,6 +388,33 @@ describe("TeamService", () => {
       givenMemberships({ 2: { role: MembershipRole.OWNER } });
 
       await expectError(service.removeMember(actor, 10, 5), ErrorCode.NotFound);
+    });
+
+    it.each([
+      MembershipRole.MEMBER,
+      MembershipRole.ADMIN,
+    ])("lets an accepted %s leave the team", async (role) => {
+      givenMemberships({ 2: { role } });
+
+      await service.removeMember(actor, 10, 2);
+
+      expect(membershipRepository.deleteByUserIdAndTeamId).toHaveBeenCalledWith({ teamId: 10, userId: 2 });
+    });
+
+    it("lets an OWNER leave while another OWNER remains", async () => {
+      givenMemberships({ 2: { role: MembershipRole.OWNER } });
+      membershipRepository.countAcceptedOwners.mockResolvedValue(2);
+
+      await service.removeMember(actor, 10, 2);
+
+      expect(membershipRepository.deleteByUserIdAndTeamId).toHaveBeenCalledWith({ teamId: 10, userId: 2 });
+    });
+
+    it("does not let a pending invitee remove themselves without admin rights", async () => {
+      givenMemberships({ 2: { role: MembershipRole.MEMBER, accepted: false } });
+
+      await expectError(service.removeMember(actor, 10, 2), ErrorCode.Forbidden);
+      expect(membershipRepository.deleteByUserIdAndTeamId).not.toHaveBeenCalled();
     });
 
     it("does not count a pending OWNER invite as the last owner", async () => {

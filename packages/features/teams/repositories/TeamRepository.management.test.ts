@@ -15,6 +15,8 @@ describe("TeamRepository team management", () => {
       findFirst: vi.fn(),
       findMany: vi.fn(),
     },
+    avatar: { deleteMany: vi.fn() },
+    booking: { count: vi.fn() },
   };
   const repository = new TeamRepository(prisma as unknown as PrismaClient);
 
@@ -95,6 +97,26 @@ describe("TeamRepository team management", () => {
       where: standalone,
       orderBy: { name: "asc" },
       select: { ...teamSelect, _count: { select: { members: true } } },
+    });
+  });
+
+  it("deletes only the team's logo rows, never user avatars", async () => {
+    await repository.deleteLogos({ teamId: 10 });
+
+    expect(prisma.avatar.deleteMany).toHaveBeenCalledWith({ where: { teamId: 10, userId: 0 } });
+  });
+
+  it("counts accepted upcoming bookings on the team's event types and their managed children", async () => {
+    const now = new Date("2026-09-23T12:00:00Z");
+    prisma.booking.count.mockResolvedValue(4);
+
+    await expect(repository.countUpcomingBookings({ teamId: 10, now })).resolves.toBe(4);
+    expect(prisma.booking.count).toHaveBeenCalledWith({
+      where: {
+        status: "ACCEPTED",
+        startTime: { gt: now },
+        eventType: { OR: [{ teamId: 10 }, { parent: { teamId: 10 } }] },
+      },
     });
   });
 });
