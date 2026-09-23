@@ -140,7 +140,8 @@ export const WeightDialog = (props: IDialog & { customClassNames?: WeightDialogC
   const [newWeight, setNewWeight] = useState<number | undefined>();
 
   const setWeight = () => {
-    if (!!newWeight) {
+    // 0 is a valid weight (the input allows min 0) and means the host gets no round-robin bookings.
+    if (newWeight !== undefined && Number.isFinite(newWeight) && newWeight >= 0) {
       const hosts: Host[] = getValues("hosts");
       const isRRWeightsEnabled = getValues("isRRWeightsEnabled");
       const hostGroups = getValues("hostGroups");
@@ -210,7 +211,7 @@ export const WeightDialog = (props: IDialog & { customClassNames?: WeightDialogC
 
   return (
     <Dialog open={isOpenDialog} onOpenChange={setIsOpenDialog}>
-      <DialogContent title={t("set_weight")} description={t("weights_description")}>
+      <DialogContent title={t("set_weight")} description={t("rr_weights_description")}>
         <div className={classNames("mb-4 mt-2", customClassNames?.container)}>
           <Label className={customClassNames?.label}>
             {t("weight_for_user", { userName: option.label })}

@@ -126,6 +126,31 @@ describe("updateHandler hosts (DB)", () => {
     expect((await hostsInDb()).map((host) => host.isFixed)).toEqual([true, true]);
   });
 
+  it("persists round-robin weights and each host's weight", async () => {
+    await updateHandler({
+      ctx: asOwner(),
+      input: {
+        id: eventTypeId as number,
+        schedulingType: SchedulingType.ROUND_ROBIN,
+        isRRWeightsEnabled: true,
+        hosts: [
+          { userId: owner.id, isFixed: false, priority: 2, weight: 100 },
+          { userId: member.id, isFixed: false, priority: 2, weight: 0 },
+        ],
+      },
+    });
+
+    const eventType = await prisma.eventType.findUnique({
+      where: { id: eventTypeId as number },
+      select: { isRRWeightsEnabled: true },
+    });
+    expect(eventType?.isRRWeightsEnabled).toBe(true);
+    expect((await hostsInDb()).map((host) => [host.userId, host.weight])).toEqual([
+      [owner.id, 100],
+      [member.id, 0],
+    ]);
+  });
+
   it("refuses a host who is not an accepted member of the team", async () => {
     await expect(
       updateHandler({

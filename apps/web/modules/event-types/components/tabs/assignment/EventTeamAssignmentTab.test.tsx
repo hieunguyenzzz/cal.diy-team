@@ -12,17 +12,29 @@ vi.mock("@calcom/features/eventtypes/components/CheckedTeamSelect", () => ({
     options,
     value,
     onChange,
+    isRRWeightsEnabled,
     "data-testid": testId,
   }: {
     options: { value: string; label: string }[];
-    value: { value: string }[];
-    onChange: (selected: { value: string }[]) => void;
+    value: { value: string; label: string }[];
+    onChange: (selected: { value: string; weight?: number }[]) => void;
+    isRRWeightsEnabled?: boolean;
     "data-testid": string;
   }) => (
     <div data-testid={testId}>
+      <p>{`weights:${String(!!isRRWeightsEnabled)}`}</p>
       {options.map((option) => (
         <button key={option.value} type="button" onClick={() => onChange([...value, option])}>
           {`add ${option.label}`}
+        </button>
+      ))}
+      {/* Stands in for the WeightDialog, which reports the edited option through onChange. */}
+      {value.map((option) => (
+        <button
+          key={`weight-${option.value}`}
+          type="button"
+          onClick={() => onChange(value.map((v) => (v.value === option.value ? { ...v, weight: 0 } : v)))}>
+          {`zero weight ${option.label}`}
         </button>
       ))}
     </div>
@@ -60,13 +72,20 @@ const teamMembers = [
 function FormState() {
   const hosts = useWatch<FormValues, "hosts">({ name: "hosts" });
   const assignAll = useWatch<FormValues, "assignAllTeamMembers">({ name: "assignAllTeamMembers" });
+  const weightsOn = useWatch<FormValues, "isRRWeightsEnabled">({ name: "isRRWeightsEnabled" });
   const summary = (hosts ?? []).map((host) => `${host.userId}:${host.isFixed ? "fixed" : "rr"}`).join(",");
-  return <p data-testid="form-state">{`hosts=${summary} assignAll=${assignAll}`}</p>;
+  const weights = (hosts ?? []).map((host) => `${host.userId}=${host.weight}`).join(",");
+  return (
+    <>
+      <p data-testid="form-state">{`hosts=${summary} assignAll=${assignAll}`}</p>
+      <p data-testid="weights-state">{`weightsOn=${weightsOn} weights=${weights}`}</p>
+    </>
+  );
 }
 
 function Harness({ schedulingType }: { schedulingType: "COLLECTIVE" | "ROUND_ROBIN" }) {
   const form = useForm<FormValues>({
-    defaultValues: { schedulingType, hosts: [], assignAllTeamMembers: false },
+    defaultValues: { schedulingType, hosts: [], assignAllTeamMembers: false, isRRWeightsEnabled: false },
   });
   return (
     <FormProvider {...form}>
@@ -116,7 +135,7 @@ describe("EventTeamAssignmentTab", () => {
   it("assigns every team member as a round-robin host", () => {
     render(<Harness schedulingType="ROUND_ROBIN" />);
 
-    fireEvent.click(within(screen.getByTestId("rr-hosts")).getByRole("switch"));
+    fireEvent.click(within(screen.getByTestId("rr-hosts")).getByTestId("assign-all-team-members-toggle"));
 
     expect(state()).toBe("hosts=1:rr,2:rr assignAll=true");
     expect(screen.queryByTestId("rr-hosts-select")).toBeNull();
@@ -142,8 +161,37 @@ describe("EventTeamAssignmentTab", () => {
   it("does not warn when all team members are assigned", () => {
     render(<Harness schedulingType="ROUND_ROBIN" />);
 
-    fireEvent.click(within(screen.getByTestId("rr-hosts")).getByRole("switch"));
+    fireEvent.click(within(screen.getByTestId("rr-hosts")).getByTestId("assign-all-team-members-toggle"));
 
     expect(screen.queryByText("no_availability_shown_to_bookers")).toBeNull();
+  });
+
+  it("offers weights for round robin only, and passes them to the round-robin picker alone", () => {
+    render(<Harness schedulingType="ROUND_ROBIN" />);
+    expect(within(screen.getByTestId("rr-hosts-select")).getByText("weights:false")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("rr-weights-switch"));
+    fireEvent.click(screen.getByTestId("fixed-hosts-switch"));
+
+    expect(screen.getByTestId("weights-state").textContent).toBe("weightsOn=true weights=");
+    expect(within(screen.getByTestId("rr-hosts-select")).getByText("weights:true")).toBeTruthy();
+    expect(within(screen.getByTestId("fixed-hosts-select")).getByText("weights:false")).toBeTruthy();
+  });
+
+  it("does not offer weights for a collective event", () => {
+    render(<Harness schedulingType="COLLECTIVE" />);
+
+    expect(screen.queryByTestId("rr-weights-switch")).toBeNull();
+  });
+
+  it("keeps an edited weight on the round-robin host", () => {
+    render(<Harness schedulingType="ROUND_ROBIN" />);
+    fireEvent.click(screen.getByTestId("rr-weights-switch"));
+    fireEvent.click(within(screen.getByTestId("rr-hosts-select")).getByText("add Ann"));
+    fireEvent.click(within(screen.getByTestId("rr-hosts-select")).getByText("add Bo"));
+
+    fireEvent.click(within(screen.getByTestId("rr-hosts-select")).getByText("zero weight Bo"));
+
+    expect(screen.getByTestId("weights-state").textContent).toBe("weightsOn=true weights=1=100,2=0");
   });
 });

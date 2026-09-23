@@ -133,13 +133,29 @@ const RoundRobinHosts = ({
   setAssignAllTeamMembers: MemberSetter;
 }) => {
   const { t } = useLocale();
-  const { getValues, setValue } = useFormContext<FormValues>();
+  const { control, getValues, setValue } = useFormContext<FormValues>();
+  const isRRWeightsEnabled = useWatch({ control, name: "isRRWeightsEnabled" });
 
   return (
     <div className="mt-5 rounded-lg" data-testid="rr-hosts">
       <SectionHeader title={t("round_robin_hosts")} description={t("round_robin_hosts_description")} />
       <div className="rounded-b-md border border-subtle border-t-0 px-6">
+        <div className="pt-6">
+          <Controller<FormValues>
+            name="isRRWeightsEnabled"
+            render={({ field: { value, onChange } }) => (
+              <SettingsToggle
+                data-testid="rr-weights-switch"
+                title={t("enable_weights")}
+                description={t("rr_weights_description")}
+                checked={!!value}
+                onCheckedChange={onChange}
+              />
+            )}
+          />
+        </div>
         <AddMembersWithSwitch
+          isRRWeightsEnabled={!!isRRWeightsEnabled}
           data-testid="rr-hosts-select"
           placeholder={t("add_a_member")}
           teamMembers={teamMembers}
