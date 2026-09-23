@@ -527,15 +527,17 @@ export const getPublicEvent = async (
       length: eventWithUserProfiles.length,
     });
   }
-  if (
-    event.team?.isPrivate &&
-    !(event.teamId && (await canViewPrivateTeamMembers({ prisma, currentUserId, teamId: event.teamId })))
-  ) {
+  const hidePrivateTeamMembers =
+    !!event.team?.isPrivate &&
+    !(event.teamId && (await canViewPrivateTeamMembers({ prisma, currentUserId, teamId: event.teamId })));
+  if (hidePrivateTeamMembers) {
     users = [];
   }
 
   return {
     ...eventWithUserProfiles,
+    // Hosts carry each member's id, username, name and avatar, so they are hidden along with users.
+    ...(hidePrivateTeamMembers && { subsetOfHosts: [], hosts: fetchAllUsers ? [] : undefined }),
     bookerLayouts: bookerLayoutsSchema.parse(eventMetaData?.bookerLayouts || null),
     description: markdownToSafeHTML(eventWithUserProfiles.description),
     metadata: eventMetaData,
