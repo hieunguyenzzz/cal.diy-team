@@ -2,6 +2,7 @@ import checkForMultiplePaymentApps from "@calcom/app-store/_utils/payments/check
 import { locationsResolver } from "@calcom/app-store/locations";
 import { stripChildrenForPayload } from "@calcom/features/eventtypes/lib/childrenEventType";
 import { validateCustomEventName } from "@calcom/features/eventtypes/lib/eventNaming";
+import { hasOnlyZeroWeightRoundRobinHosts } from "@calcom/features/eventtypes/lib/roundRobinWeights";
 import type {
   EventTypeSetupProps,
   EventTypeUpdateInput,
@@ -11,13 +12,87 @@ import { sortHosts } from "@calcom/lib/bookings/hostGroupUtils";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { validateIntervalLimitOrder } from "@calcom/lib/intervalLimits/validateIntervalLimitOrder";
 import { validateBookerLayouts } from "@calcom/lib/validateBookerLayouts";
+import { SchedulingType } from "@calcom/prisma/enums";
 import { eventTypeBookingFields as eventTypeBookingFieldsSchema } from "@calcom/prisma/zod-utils";
 import { zodResolver } from "@hookform/resolvers/zod";
+import type { TFunction } from "i18next";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 type Fields = z.infer<typeof eventTypeBookingFieldsSchema>;
+
+// Exported so the editor's validation rules can be tested without rendering the hook.
+export const buildEventTypeFormSchema = ({
+  t,
+  getBookingFields,
+}: {
+  t: TFunction;
+  getBookingFields: () => { name: string }[];
+}) =>
+  z
+    .object({
+      // Length if string, is converted to a number or it can be a number
+      // Make it optional because it's not submitted from all tabs of the page
+      eventName: z
+        .string()
+        .superRefine((val, ctx) => {
+          const bookingFields: Record<string, Fields[number]["name"]> = {};
+          const _bookingFields = getBookingFields();
+          _bookingFields.forEach(({ name }: { name: string }) => {
+            bookingFields[name] = name;
+          });
+
+          const validationResult = validateCustomEventName(val, bookingFields);
+          if (validationResult !== true) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: t("invalid_event_name_variables", { item: validationResult }),
+            });
+          }
+        })
+        .optional(),
+      length: z.union([z.string().transform((val) => +val), z.number()]).optional(),
+      offsetStart: z.union([z.string().transform((val) => +val), z.number()]).optional(),
+      bookingFields: eventTypeBookingFieldsSchema,
+      locations: locationsResolver(t),
+      calVideoSettings: z
+        .object({
+          redirectUrlOnExit: z.string().url().nullish(),
+          disableRecordingForOrganizer: z.boolean().nullable(),
+          disableRecordingForGuests: z.boolean().nullable(),
+          enableAutomaticTranscription: z.boolean().nullable(),
+          enableAutomaticRecordingForOrganizer: z.boolean().nullable(),
+          disableTranscriptionForGuests: z.boolean().nullable(),
+          disableTranscriptionForOrganizer: z.boolean().nullable(),
+          requireEmailForGuests: z.boolean().nullable(),
+        })
+        .optional()
+        .nullable(),
+      // Typed only as far as the round-robin weights check below needs.
+      schedulingType: z.nativeEnum(SchedulingType).nullish(),
+      isRRWeightsEnabled: z.boolean().optional(),
+      hosts: z
+        .array(z.object({ isFixed: z.boolean(), weight: z.number().nullish() }).passthrough())
+        .optional(),
+    })
+    // TODO: Add schema for other fields later.
+    .passthrough()
+    .superRefine((values, ctx) => {
+      // The server refuses this too; catching it here keeps the save from failing after the click.
+      const collective = values.schedulingType === SchedulingType.COLLECTIVE;
+      const hosts = (values.hosts ?? []).map((host) => ({
+        isFixed: collective || host.isFixed,
+        weight: host.weight,
+      }));
+      if (hasOnlyZeroWeightRoundRobinHosts({ isRRWeightsEnabled: !!values.isRRWeightsEnabled, hosts })) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["hosts"],
+          message: t("rr_weights_need_one_above_zero"),
+        });
+      }
+    });
 
 export const useEventTypeForm = ({
   eventType,
@@ -141,48 +216,10 @@ export const useEventTypeForm = ({
   const form = useForm<FormValues>({
     defaultValues,
     resolver: zodResolver(
-      z
-        .object({
-          // Length if string, is converted to a number or it can be a number
-          // Make it optional because it's not submitted from all tabs of the page
-          eventName: z
-            .string()
-            .superRefine((val, ctx) => {
-              const bookingFields: Record<string, Fields[number]["name"]> = {};
-              const _bookingFields = form.getValues("bookingFields");
-              _bookingFields.forEach(({ name }: { name: string }) => {
-                bookingFields[name] = name;
-              });
-
-              const validationResult = validateCustomEventName(val, bookingFields);
-              if (validationResult !== true) {
-                ctx.addIssue({
-                  code: z.ZodIssueCode.custom,
-                  message: t("invalid_event_name_variables", { item: validationResult }),
-                });
-              }
-            })
-            .optional(),
-          length: z.union([z.string().transform((val) => +val), z.number()]).optional(),
-          offsetStart: z.union([z.string().transform((val) => +val), z.number()]).optional(),
-          bookingFields: eventTypeBookingFieldsSchema,
-          locations: locationsResolver(t),
-          calVideoSettings: z
-            .object({
-              redirectUrlOnExit: z.string().url().nullish(),
-              disableRecordingForOrganizer: z.boolean().nullable(),
-              disableRecordingForGuests: z.boolean().nullable(),
-              enableAutomaticTranscription: z.boolean().nullable(),
-              enableAutomaticRecordingForOrganizer: z.boolean().nullable(),
-              disableTranscriptionForGuests: z.boolean().nullable(),
-              disableTranscriptionForOrganizer: z.boolean().nullable(),
-              requireEmailForGuests: z.boolean().nullable(),
-            })
-            .optional()
-            .nullable(),
-        })
-        // TODO: Add schema for other fields later.
-        .passthrough()
+      buildEventTypeFormSchema({
+        t,
+        getBookingFields: (): { name: string }[] => form.getValues("bookingFields"),
+      })
     ),
   });
 

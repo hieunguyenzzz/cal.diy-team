@@ -1,8 +1,10 @@
+import type { TFunction } from "i18next";
 import { describe, it, expect } from "vitest";
 
 import type { ChildrenEventType } from "@calcom/features/eventtypes/lib/childrenEventType";
 import { stripChildrenForPayload } from "@calcom/features/eventtypes/lib/childrenEventType";
-import { MembershipRole } from "@calcom/prisma/enums";
+import { MembershipRole, SchedulingType } from "@calcom/prisma/enums";
+import { buildEventTypeFormSchema } from "./useEventTypeForm";
 
 describe("useEventTypeForm - children payload stripping", () => {
   it("should strip avatar, profile, username, and membership from children payload", () => {
@@ -147,5 +149,58 @@ describe("useEventTypeForm - children payload stripping", () => {
     const children: ChildrenEventType[] = [];
     const stripped = stripChildrenForPayload(children);
     expect(stripped).toEqual([]);
+  });
+});
+
+describe("useEventTypeForm - resolver schema: round-robin weights", () => {
+  const schema = buildEventTypeFormSchema({
+    t: ((key: string) => key) as unknown as TFunction,
+    getBookingFields: () => [],
+  });
+  const base = { bookingFields: [], locations: [] };
+  const zeroHosts = [
+    { userId: 1, isFixed: true, priority: 2, weight: 100 },
+    { userId: 2, isFixed: false, priority: 2, weight: 0 },
+    { userId: 3, isFixed: false, priority: 2, weight: 0 },
+  ];
+
+  it("lets a personal event with no hosts save", () => {
+    expect(schema.safeParse(base).success).toBe(true);
+  });
+
+  it("lets a collective event save with weights on and every weight at 0, since its hosts are all fixed", () => {
+    const result = schema.safeParse({
+      ...base,
+      schedulingType: SchedulingType.COLLECTIVE,
+      isRRWeightsEnabled: true,
+      hosts: zeroHosts.map((host) => ({ ...host, weight: 0 })),
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("blocks a round-robin event with weights on and every round-robin host at 0", () => {
+    const result = schema.safeParse({
+      ...base,
+      schedulingType: SchedulingType.ROUND_ROBIN,
+      isRRWeightsEnabled: true,
+      hosts: zeroHosts,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toEqual([
+      expect.objectContaining({ path: ["hosts"], message: "rr_weights_need_one_above_zero" }),
+    ]);
+  });
+
+  it("lets the same round-robin event save with weights off", () => {
+    const result = schema.safeParse({
+      ...base,
+      schedulingType: SchedulingType.ROUND_ROBIN,
+      isRRWeightsEnabled: false,
+      hosts: zeroHosts,
+    });
+
+    expect(result.success).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
 import { checkForEmptyAssignment } from "@calcom/features/eventtypes/lib/checkForEmptyAssignment";
 import { DEFAULT_HOST_PRIORITY, DEFAULT_HOST_WEIGHT } from "@calcom/features/eventtypes/lib/hostDefaults";
+import { hasOnlyZeroWeightRoundRobinHosts } from "@calcom/features/eventtypes/lib/roundRobinWeights";
 import type {
   EventTypeSetupProps,
   FormValues,
@@ -133,13 +134,37 @@ const RoundRobinHosts = ({
   setAssignAllTeamMembers: MemberSetter;
 }) => {
   const { t } = useLocale();
-  const { getValues, setValue } = useFormContext<FormValues>();
+  const { control, getValues, setValue } = useFormContext<FormValues>();
+  const isRRWeightsEnabled = useWatch({ control, name: "isRRWeightsEnabled" });
+  // The form's resolver blocks the save in this state; this explains why.
+  const allWeightsZero = hasOnlyZeroWeightRoundRobinHosts({
+    isRRWeightsEnabled: !!isRRWeightsEnabled,
+    hosts: value,
+  });
 
   return (
     <div className="mt-5 rounded-lg" data-testid="rr-hosts">
       <SectionHeader title={t("round_robin_hosts")} description={t("round_robin_hosts_description")} />
       <div className="rounded-b-md border border-subtle border-t-0 px-6">
+        <div className="pt-6">
+          <Controller<FormValues>
+            name="isRRWeightsEnabled"
+            render={({ field: { value, onChange } }) => (
+              <SettingsToggle
+                data-testid="rr-weights-switch"
+                title={t("enable_weights")}
+                description={t("rr_weights_description")}
+                checked={!!value}
+                onCheckedChange={onChange}
+              />
+            )}
+          />
+        </div>
+        {allWeightsZero && (
+          <Alert className="mt-4" severity="error" title={t("rr_weights_need_one_above_zero")} />
+        )}
         <AddMembersWithSwitch
+          isRRWeightsEnabled={!!isRRWeightsEnabled}
           data-testid="rr-hosts-select"
           placeholder={t("add_a_member")}
           teamMembers={teamMembers}
@@ -274,6 +299,10 @@ export const EventTeamAssignmentTab = ({ team, teamMembers }: EventTeamAssignmen
       onChange(schedulingType);
       setValue("assignAllTeamMembers", false, { shouldDirty: true });
       setAssignAllTeamMembers(false);
+      // Weights only apply to round-robin hosts; a collective event keeping them on is misleading.
+      if (schedulingType === SchedulingType.COLLECTIVE) {
+        setValue("isRRWeightsEnabled", false, { shouldDirty: true });
+      }
     },
     [setValue]
   );

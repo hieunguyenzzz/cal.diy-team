@@ -4770,5 +4770,7 @@
   "left_team_successfully": "You left the team",
   "fixed_hosts_description": "Everyone added here attends every booking.",
   "round_robin_hosts_description": "Hosts take turns: each booking goes to one available host.",
+  "rr_weights_description": "Hosts with a higher weight get more bookings. A host at 0% only gets bookings when no one else is free.",
+  "rr_weights_need_one_above_zero": "At least one round-robin host needs a weight above 0.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }

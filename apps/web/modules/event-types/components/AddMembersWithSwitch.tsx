@@ -7,8 +7,8 @@ import { useLocale } from "@calcom/lib/hooks/useLocale";
 import type { Dispatch, SetStateAction } from "react";
 
 // Restored from before the Cal.diy trim and cut down to plain host selection: no segments, platform
-// wrapper or host groups. Priority is live (the host list's priority button feeds getLuckyUser's round-robin
-// ordering); weights stay at their neutral default because weighting is disabled until it gets its own UI.
+// wrapper or host groups. Priority and, when the event enables weights, weight are edited per host in the
+// list and both feed getLuckyUser's round-robin choice.
 
 interface IUserToValue {
   id: number | null;
@@ -38,6 +38,7 @@ const CheckedHostField = ({
   isFixed,
   value,
   onChange,
+  isRRWeightsEnabled,
   "data-testid": dataTestId,
 }: {
   placeholder: string;
@@ -45,6 +46,7 @@ const CheckedHostField = ({
   isFixed: boolean;
   value: Host[];
   onChange: (hosts: Host[]) => void;
+  isRRWeightsEnabled: boolean;
   "data-testid"?: string;
 }) => (
   <CheckedTeamSelect
@@ -80,7 +82,7 @@ const CheckedHostField = ({
     controlShouldRenderValue={false}
     options={options}
     placeholder={placeholder}
-    isRRWeightsEnabled={false}
+    isRRWeightsEnabled={isRRWeightsEnabled}
     groupId={null}
   />
 );
@@ -96,6 +98,8 @@ type AddMembersWithSwitchProps = {
   onActive: () => void;
   isFixed: boolean;
   placeholder?: string;
+  // Shows each host's weight with an edit button; only meaningful for round-robin hosts.
+  isRRWeightsEnabled?: boolean;
   "data-testid"?: string;
 };
 
@@ -109,6 +113,7 @@ function AddMembersWithSwitch({
   onActive,
   isFixed,
   placeholder,
+  isRRWeightsEnabled = false,
   "data-testid": dataTestId,
 }: AddMembersWithSwitchProps) {
   const { t } = useLocale();
@@ -130,6 +135,7 @@ function AddMembersWithSwitch({
           isFixed={isFixed}
           options={[...teamMembers].sort(sortByLabel).map((member) => ({ ...member, groupId: null }))}
           placeholder={placeholder ?? t("add_attendees")}
+          isRRWeightsEnabled={isRRWeightsEnabled}
         />
       )}
     </div>
