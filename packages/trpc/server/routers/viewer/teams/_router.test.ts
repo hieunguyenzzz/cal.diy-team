@@ -28,7 +28,7 @@ const membershipRepository = {
   deleteByUserIdAndTeamId: vi.fn(),
   countAcceptedOwners: vi.fn(),
 };
-const userRepository = { findByEmail: vi.fn() };
+const userRepository = { findByEmailIncludeLocked: vi.fn() };
 const uploadLogo = vi.fn();
 
 // The real service with fake repositories, so each test exercises zod, the permission rules and the
@@ -278,7 +278,7 @@ describe("viewer.teams router", () => {
     const input = { teamId: 10, email: "new@example.com", role: MembershipRole.MEMBER };
 
     beforeEach(() => {
-      userRepository.findByEmail.mockResolvedValue({ id: 5, locked: false });
+      userRepository.findByEmailIncludeLocked.mockResolvedValue({ id: 5, locked: false });
     });
 
     it("is forbidden to a team owner who is not the instance admin", async () => {
@@ -302,7 +302,7 @@ describe("viewer.teams router", () => {
 
     it("rejects a locked user with BAD_REQUEST", async () => {
       signInAs(UserPermissionRole.ADMIN);
-      userRepository.findByEmail.mockResolvedValue({ id: 5, locked: true });
+      userRepository.findByEmailIncludeLocked.mockResolvedValue({ id: 5, locked: true });
 
       await expect(caller.addMember(input)).rejects.toMatchObject({
         code: "BAD_REQUEST",
@@ -313,7 +313,7 @@ describe("viewer.teams router", () => {
 
     it("reports an unknown email as NOT_FOUND", async () => {
       signInAs(UserPermissionRole.ADMIN);
-      userRepository.findByEmail.mockResolvedValue(null);
+      userRepository.findByEmailIncludeLocked.mockResolvedValue(null);
 
       await expectCode(caller.addMember(input), "NOT_FOUND");
     });
@@ -326,7 +326,7 @@ describe("viewer.teams router", () => {
       signInAs(UserPermissionRole.ADMIN);
 
       await expectCode(caller.addMember(badInput as typeof input), "BAD_REQUEST");
-      expect(userRepository.findByEmail).not.toHaveBeenCalled();
+      expect(userRepository.findByEmailIncludeLocked).not.toHaveBeenCalled();
     });
   });
 

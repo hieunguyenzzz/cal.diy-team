@@ -267,3 +267,19 @@ describe("listUsers", () => {
     expect(total).toEqual(0);
   });
 });
+
+describe("findByEmailIncludeLocked", () => {
+  // The shared client's excludeLockedUsers extension adds `locked: false` unless the where mentions
+  // `locked`, so the query must name it for a locked user to be found at all.
+  test("mentions locked in the where so locked users are not filtered out, and selects locked", async () => {
+    const findFirst = vi.fn().mockResolvedValue(null);
+    const repository = new UserRepository({ user: { findFirst } } as unknown as typeof prismock);
+
+    await repository.findByEmailIncludeLocked({ email: "Locked@Example.com" });
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { email: "locked@example.com", OR: [{ locked: true }, { locked: false }] },
+      select: expect.objectContaining({ id: true, locked: true }),
+    });
+  });
+});

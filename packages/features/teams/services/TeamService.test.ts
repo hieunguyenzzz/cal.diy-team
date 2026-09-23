@@ -31,7 +31,7 @@ const membershipRepository = {
   countAcceptedOwners: vi.fn(),
   findByTeamIdIncludeUser: vi.fn(),
 };
-const userRepository = { findByEmail: vi.fn() };
+const userRepository = { findByEmailIncludeLocked: vi.fn() };
 const uploadLogo = vi.fn();
 
 const service = new TeamService({
@@ -399,11 +399,11 @@ describe("TeamService", () => {
 
   describe("addMemberByEmail", () => {
     beforeEach(() => {
-      userRepository.findByEmail.mockResolvedValue({ id: 5, locked: false });
+      userRepository.findByEmailIncludeLocked.mockResolvedValue({ id: 5, locked: false });
     });
 
     it("rejects a locked user", async () => {
-      userRepository.findByEmail.mockResolvedValue({ id: 5, locked: true });
+      userRepository.findByEmailIncludeLocked.mockResolvedValue({ id: 5, locked: true });
 
       await expectError(
         service.addMemberByEmail(instanceAdmin, 10, {
@@ -427,7 +427,7 @@ describe("TeamService", () => {
         service.addMemberByEmail(actor, 10, { email: "new@example.com", role: MembershipRole.MEMBER }),
         ErrorCode.Forbidden
       );
-      expect(userRepository.findByEmail).not.toHaveBeenCalled();
+      expect(userRepository.findByEmailIncludeLocked).not.toHaveBeenCalled();
       expect(membershipRepository.createAccepted).not.toHaveBeenCalled();
     });
 
@@ -438,12 +438,12 @@ describe("TeamService", () => {
     ])("lets the instance admin add an existing user as an accepted %s", async (role) => {
       await service.addMemberByEmail(instanceAdmin, 10, { email: "New@Example.com", role });
 
-      expect(userRepository.findByEmail).toHaveBeenCalledWith({ email: "New@Example.com" });
+      expect(userRepository.findByEmailIncludeLocked).toHaveBeenCalledWith({ email: "New@Example.com" });
       expect(membershipRepository.createAccepted).toHaveBeenCalledWith({ teamId: 10, userId: 5, role });
     });
 
     it("tells the admin to create the user first for an unknown email", async () => {
-      userRepository.findByEmail.mockResolvedValue(null);
+      userRepository.findByEmailIncludeLocked.mockResolvedValue(null);
 
       await expectError(
         service.addMemberByEmail(instanceAdmin, 10, {

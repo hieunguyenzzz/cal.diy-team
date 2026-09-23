@@ -22,7 +22,7 @@ type TeamProfileInput = {
 interface ITeamServiceDeps {
   teamRepository: TeamRepository;
   membershipRepository: MembershipRepository;
-  userRepository: Pick<UserRepository, "findByEmail">;
+  userRepository: Pick<UserRepository, "findByEmailIncludeLocked">;
   teamPermissionService: TeamPermissionService;
   uploadLogo: (args: { teamId: number; logo: string }) => Promise<string>;
 }
@@ -141,7 +141,7 @@ class TeamService {
     this.assertInstanceAdmin(actor, "Only instance admins can add members to a team");
     await this.findTeamOrThrow(teamId);
 
-    const user = await this.deps.userRepository.findByEmail({ email: input.email });
+    const user = await this.deps.userRepository.findByEmailIncludeLocked({ email: input.email });
     if (!user) {
       throw ErrorWithCode.Factory.NotFound(`No user has the email ${input.email}. Create the user first.`);
     }

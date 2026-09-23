@@ -277,6 +277,15 @@ export class UserRepository {
     return user;
   }
 
+  // The shared client's excludeLockedUsers extension adds `locked: false` unless the where names `locked`;
+  // naming both values opts out, for callers that must see locked users to refuse them. Email is unique.
+  async findByEmailIncludeLocked({ email }: { email: string }) {
+    return this.prismaClient.user.findFirst({
+      where: { email: email.toLowerCase(), OR: [{ locked: true }, { locked: false }] },
+      select: userSelect,
+    });
+  }
+
   async findManyByEmailsWithEmailVerificationSettings({ emails }: { emails: string[] }) {
     const normalizedEmails = emails.map((e) => e.toLowerCase());
 

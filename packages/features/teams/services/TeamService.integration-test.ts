@@ -86,6 +86,16 @@ describe("TeamService (DB)", () => {
     const listed = (await service.listTeams(asAdmin())).find(({ id }) => id === team.id);
     expect(listed?.memberCount).toBe(2);
 
+    // The shared client hides locked users by default; addMember must still find them in order to refuse them.
+    const locked = await prisma.user.create({
+      data: { email: `${suffix}-locked@example.com`, username: `${suffix}-locked`, locked: true },
+      select: { id: true, email: true },
+    });
+    userIds.push(locked.id);
+    await expect(
+      service.addMemberByEmail(asAdmin(), team.id, { email: locked.email, role: MembershipRole.MEMBER })
+    ).rejects.toMatchObject({ code: ErrorCode.BadRequest, message: expect.stringMatching(/locked/) });
+
     await service.changeMemberRole(asAdmin(), team.id, member.id, MembershipRole.OWNER);
     await service.changeMemberRole(asAdmin(), team.id, member.id, MembershipRole.ADMIN);
     expect(await roleOf(member.id)).toBe(MembershipRole.ADMIN);
