@@ -175,14 +175,19 @@ describe("TeamService", () => {
       ["a plain string", "not-an-image"],
       ["a non-image data URL", "data:text/html;base64,PGh0bWw+"],
       ["an unlisted image type", "data:image/bmp;base64,AAAA"],
+      // The avatar route only strips png/jpeg prefixes (SVG is converted to PNG on upload), so these would render broken.
+      ["a WebP image", "data:image/webp;base64,AAAA"],
+      ["a GIF image", "data:image/gif;base64,AAAA"],
       ["a data URL without base64", "data:image/png,AAAA"],
+      ["base64 with characters outside the alphabet", "data:image/png;base64,AA*A"],
+      ["base64 with more than two padding characters", "data:image/png;base64,AAAA==="],
     ])("rejects %s as a logo", async (_label, logo) => {
       await expectError(service.updateTeam(instanceAdmin, 10, { logo }), ErrorCode.BadRequest, /logo/i);
       expect(uploadLogo).not.toHaveBeenCalled();
       expect(teamRepository.update).not.toHaveBeenCalled();
     });
 
-    it.each(["png", "jpeg", "webp", "gif", "svg+xml"])("accepts a %s logo", async (type) => {
+    it.each(["png", "jpeg", "svg+xml"])("accepts a %s logo", async (type) => {
       uploadLogo.mockResolvedValue("/api/avatar/ok.png");
 
       await service.updateTeam(instanceAdmin, 10, { logo: `data:image/${type};base64,AAAA` });
@@ -207,6 +212,19 @@ describe("TeamService", () => {
         logo: `data:image/png;base64,${base64Of(2 * 1024 * 1024)}`,
       });
       expect(uploadLogo).toHaveBeenCalledTimes(1);
+    });
+
+    it("cannot be bypassed by padding a large image with trailing '='", async () => {
+      const sixMegabytes = Buffer.alloc(6 * 1024 * 1024).toString("base64");
+
+      for (const padded of [`${sixMegabytes}${"=".repeat(20 * 1024 * 1024)}`, `${sixMegabytes}==`]) {
+        await expectError(
+          service.updateTeam(instanceAdmin, 10, { logo: `data:image/png;base64,${padded}` }),
+          ErrorCode.BadRequest,
+          /logo/i
+        );
+      }
+      expect(uploadLogo).not.toHaveBeenCalled();
     });
   });
 
