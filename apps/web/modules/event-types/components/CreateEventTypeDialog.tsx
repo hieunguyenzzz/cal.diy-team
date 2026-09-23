@@ -117,7 +117,7 @@ export function CreateEventTypeDialog({ profileOptions }: { profileOptions: Prof
         "length",
         "slug",
         "locations",
-        "teamId",
+        // teamId stays: the listing uses it to keep the team's tab selected after the dialog closes.
         "schedulingType",
       ]}>
       <DialogContent
