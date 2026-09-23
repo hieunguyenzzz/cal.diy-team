@@ -299,6 +299,10 @@ export const EventTeamAssignmentTab = ({ team, teamMembers }: EventTeamAssignmen
       onChange(schedulingType);
       setValue("assignAllTeamMembers", false, { shouldDirty: true });
       setAssignAllTeamMembers(false);
+      // Weights only apply to round-robin hosts; a collective event keeping them on is misleading.
+      if (schedulingType === SchedulingType.COLLECTIVE) {
+        setValue("isRRWeightsEnabled", false, { shouldDirty: true });
+      }
     },
     [setValue]
   );

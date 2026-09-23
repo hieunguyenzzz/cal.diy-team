@@ -205,4 +205,14 @@ describe("EventTeamAssignmentTab", () => {
 
     expect(screen.getByText("rr_weights_need_one_above_zero")).toBeTruthy();
   });
+
+  it("turns weights off when the event switches to collective", () => {
+    render(<Harness schedulingType="ROUND_ROBIN" />);
+    fireEvent.click(screen.getByTestId("rr-weights-switch"));
+    expect(screen.getByTestId("weights-state").textContent).toContain("weightsOn=true");
+
+    fireEvent.change(screen.getByLabelText("scheduling_type"), { target: { value: "COLLECTIVE" } });
+
+    expect(screen.getByTestId("weights-state").textContent).toContain("weightsOn=false");
+  });
 });
