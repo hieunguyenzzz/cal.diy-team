@@ -37,7 +37,9 @@ const EventAvailabilityTab = dynamic(() =>
   import("./tabs/availability/EventAvailabilityTabWebWrapper").then((mod) => mod)
 );
 
-const EventTeamAssignmentTab = dynamic(() => Promise.resolve((_props: Record<string, unknown>) => null));
+const EventTeamAssignmentTab = dynamic(() =>
+  import("./tabs/assignment/EventTeamAssignmentTab").then((mod) => mod.EventTeamAssignmentTab)
+);
 
 const EventLimitsTab = dynamic(() => import("./tabs/limits/EventLimitsTabWebWrapper").then((mod) => mod));
 
@@ -183,12 +185,7 @@ const EventTypeWeb = ({
       />
     ),
     team: (
-      <EventTeamAssignmentTab
-        orgId={orgBranding?.id ?? null}
-        teamMembers={teamMembers}
-        team={team}
-        eventType={eventType}
-      />
+      <EventTeamAssignmentTab teamMembers={teamMembers} team={team} />
     ),
     limits: <EventLimitsTab eventType={eventType} />,
     advanced: (
