@@ -83,7 +83,10 @@ describe("updateHandler teamId handling", () => {
           hosts: [{ userId: 2, isFixed: false }],
         } as UpdateOptions["input"],
       })
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: "Event type cannot be moved to another team",
+    });
     expect(prismaMock.eventType.update).not.toHaveBeenCalled();
   });
 
@@ -92,7 +95,10 @@ describe("updateHandler teamId handling", () => {
 
     await expect(
       updateHandler({ ctx, input: { id: 1, teamId: 20 } as UpdateOptions["input"] })
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: "Event type cannot be moved to another team",
+    });
     expect(prismaMock.eventType.update).not.toHaveBeenCalled();
   });
 

@@ -180,7 +180,7 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
 
   const teamId = eventType.team?.id;
   if (inputTeamId != null && inputTeamId !== teamId) {
-    throw new TRPCError({ code: "UNAUTHORIZED" });
+    throw new TRPCError({ code: "FORBIDDEN", message: "Event type cannot be moved to another team" });
   }
 
   const finalSeatsPerTimeSlot =
