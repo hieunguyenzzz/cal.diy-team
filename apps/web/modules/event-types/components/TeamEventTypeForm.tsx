@@ -41,6 +41,11 @@ export function TeamEventTypeForm({
   useEffect(() => {
     form.setValue("teamId", teamId);
     if (!form.getValues("schedulingType")) form.setValue("schedulingType", SchedulingType.COLLECTIVE);
+    // The create dialog shares this form with the personal path, so leave no team fields behind.
+    return () => {
+      form.setValue("teamId", undefined);
+      form.setValue("schedulingType", undefined);
+    };
   }, [form, teamId]);
 
   return (
@@ -54,12 +59,13 @@ export function TeamEventTypeForm({
       SubmitButton={SubmitButton}
       extraFields={
         <div>
-          <Label>{t("scheduling_type")}</Label>
+          <Label id="team-event-scheduling-type">{t("scheduling_type")}</Label>
           <Controller
             control={form.control}
             name="schedulingType"
             render={({ field: { value, onChange } }) => (
               <RadioArea.Group
+                aria-labelledby="team-event-scheduling-type"
                 className="flex flex-col gap-2"
                 value={value ?? SchedulingType.COLLECTIVE}
                 onValueChange={onChange}>

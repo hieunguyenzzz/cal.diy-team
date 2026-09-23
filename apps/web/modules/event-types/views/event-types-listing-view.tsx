@@ -45,8 +45,8 @@ import {
   CreateEventTypeDialog,
   type ProfileOption,
 } from "@calcom/web/modules/event-types/components/CreateEventTypeDialog";
-import { NewEventTypeButton } from "@calcom/web/modules/event-types/components/NewEventTypeButton";
 import { DuplicateDialog } from "@calcom/web/modules/event-types/components/DuplicateDialog";
+import { NewEventTypeButton } from "@calcom/web/modules/event-types/components/NewEventTypeButton";
 import { InfiniteSkeletonLoader } from "@calcom/web/modules/event-types/components/SkeletonLoader";
 import { canDeleteEventTypesInGroup } from "@calcom/web/modules/event-types/lib/canDeleteEventTypes";
 import { SearchIcon } from "@coss/ui/icons";

@@ -30,10 +30,16 @@ vi.mock("@calcom/features/eventtypes/components/CreateEventTypeForm", () => ({
   ),
 }));
 
-function Harness() {
+const { formRef } = vi.hoisted(() => ({
+  formRef: { current: null as null | { getValues: () => Record<string, unknown> } },
+}));
+
+function Harness({ showTeamForm = true }: { showTeamForm?: boolean }) {
   const form = useForm<CreateEventTypeFormValues>({
     defaultValues: { title: "Intro", slug: "intro", length: 30 },
   });
+  formRef.current = form;
+  if (!showTeamForm) return null;
   return (
     <TeamEventTypeForm
       form={form}
@@ -79,5 +85,22 @@ describe("TeamEventTypeForm", () => {
     fireEvent.click(screen.getByText("submit"));
 
     expect(submitted).toHaveBeenLastCalledWith(expect.objectContaining({ schedulingType: "ROUND_ROBIN" }));
+  });
+
+  it("names the scheduling type choice for assistive technology", () => {
+    render(<Harness />);
+
+    expect(screen.getByRole("radiogroup", { name: "scheduling_type" })).toBeTruthy();
+  });
+
+  // The form outlives the team form inside the create dialog, so it must not keep team fields behind.
+  it("clears the team fields from the shared form when it unmounts", () => {
+    const { rerender } = render(<Harness />);
+    expect(formRef.current?.getValues()).toMatchObject({ teamId: 10, schedulingType: "COLLECTIVE" });
+
+    rerender(<Harness showTeamForm={false} />);
+
+    expect(formRef.current?.getValues().teamId).toBeUndefined();
+    expect(formRef.current?.getValues().schedulingType).toBeUndefined();
   });
 });

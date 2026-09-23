@@ -9,10 +9,10 @@ import { trpc } from "@calcom/trpc/react";
 import { Button } from "@calcom/ui/components/button";
 import { DialogClose, DialogContent, DialogFooter } from "@calcom/ui/components/dialog";
 import { showToast } from "@calcom/ui/components/toast";
+import { useCreateEventType } from "@calcom/web/modules/event-types/hooks/useCreateEventType";
 import { isValidPhoneNumber } from "libphonenumber-js/max";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
-import { useCreateEventType } from "@calcom/web/modules/event-types/hooks/useCreateEventType";
 import { TeamEventTypeForm } from "./TeamEventTypeForm";
 
 const WEBSITE_URL = process.env.NEXT_PUBLIC_WEBSITE_URL ?? "";
@@ -109,7 +109,17 @@ export function CreateEventTypeDialog({ profileOptions }: { profileOptions: Prof
   return (
     <Dialog
       name="new"
-      clearQueryParamsOnClose={["eventPage", "type", "description", "title", "length", "slug", "locations"]}>
+      clearQueryParamsOnClose={[
+        "eventPage",
+        "type",
+        "description",
+        "title",
+        "length",
+        "slug",
+        "locations",
+        "teamId",
+        "schedulingType",
+      ]}>
       <DialogContent
         type="creation"
         enableOverflow
