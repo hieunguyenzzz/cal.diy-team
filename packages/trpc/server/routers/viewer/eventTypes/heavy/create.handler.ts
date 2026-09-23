@@ -84,7 +84,7 @@ export const createHandler = async ({ ctx, input }: CreateOptions) => {
 
   if (teamId && schedulingType) {
     const teamPermissionService = new TeamPermissionService(new MembershipRepository(ctx.prisma));
-    const hasCreatePermission = await teamPermissionService.canManageTeamEventType({
+    const hasCreatePermission = await teamPermissionService.canPerformTeamEventTypeAction({
       userId,
       userRole: ctx.user.role,
       teamId,

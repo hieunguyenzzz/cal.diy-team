@@ -34,14 +34,14 @@ export function toTeamEventTypeAction(permission: string): TeamEventTypeAction |
   return PERMISSION_TO_ACTION.get(permission) ?? null;
 }
 
-export function roleCanManageTeamEventType(role: MembershipRole, action: TeamEventTypeAction): boolean {
+export function roleAllowsTeamEventTypeAction(role: MembershipRole, action: TeamEventTypeAction): boolean {
   return EVENT_TYPE_ACTION_ROLES[action].includes(role);
 }
 
 export class TeamPermissionService {
   constructor(private readonly membershipRepository: MembershipRepository) {}
 
-  async canManageTeamEventType({
+  async canPerformTeamEventTypeAction({
     userId,
     userRole,
     teamId,
@@ -49,10 +49,13 @@ export class TeamPermissionService {
   }: TeamPermissionCheck & { action: TeamEventTypeAction }): Promise<boolean> {
     if (userRole === UserPermissionRole.ADMIN) return true;
 
-    const membership = await this.membershipRepository.findRoleByUserIdAndTeamId({ userId, teamId });
+    const membership = await this.membershipRepository.findRoleAndAcceptedByUserIdAndTeamId({
+      userId,
+      teamId,
+    });
     if (!membership?.accepted) return false;
 
-    return roleCanManageTeamEventType(membership.role, action);
+    return roleAllowsTeamEventTypeAction(membership.role, action);
   }
 
   async hasEventTypePermission({
@@ -62,7 +65,7 @@ export class TeamPermissionService {
     const action = toTeamEventTypeAction(permission);
     if (!action) return false;
 
-    return this.canManageTeamEventType({ ...check, action });
+    return this.canPerformTeamEventTypeAction({ ...check, action });
   }
 }
 

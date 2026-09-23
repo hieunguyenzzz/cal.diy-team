@@ -1,4 +1,4 @@
-import { roleCanManageTeamEventType } from "@calcom/features/teams/services/TeamPermissionService";
+import { roleAllowsTeamEventTypeAction } from "@calcom/features/teams/services/TeamPermissionService";
 import { MembershipRole } from "@calcom/prisma/enums";
 
 export interface TeamPermissions {
@@ -32,29 +32,26 @@ export function getEffectiveRole(
 
 export function getTeamPermissions(effectiveRole: MembershipRole): TeamPermissions {
   return {
-    canRead: roleCanManageTeamEventType(effectiveRole, "read"),
-    canCreate: roleCanManageTeamEventType(effectiveRole, "create"),
-    canEdit: roleCanManageTeamEventType(effectiveRole, "update"),
-    canDelete: roleCanManageTeamEventType(effectiveRole, "delete"),
+    canRead: roleAllowsTeamEventTypeAction(effectiveRole, "read"),
+    canCreate: roleAllowsTeamEventTypeAction(effectiveRole, "create"),
+    canEdit: roleAllowsTeamEventTypeAction(effectiveRole, "update"),
+    canDelete: roleAllowsTeamEventTypeAction(effectiveRole, "delete"),
   };
 }
 
-export async function buildTeamPermissionsMap(
+export function buildTeamPermissionsMap(
   memberships: Array<{ team: { id: number; parentId?: number | null }; role: MembershipRole }>,
-  teamMemberships: MembershipWithRole[],
-  _userId: number
-): Promise<Map<number, TeamPermissions>> {
-  const permissionPromises = memberships.map(async (membership) => {
-    const orgMembership = teamMemberships.find(
-      (teamM) => teamM.teamId === membership.team.parentId
-    )?.membershipRole;
+  teamMemberships: MembershipWithRole[]
+): Map<number, TeamPermissions> {
+  const roleByTeamId = new Map(teamMemberships.map((teamM) => [teamM.teamId, teamM.membershipRole]));
 
-    const effectiveRole = getEffectiveRole(orgMembership, membership.role);
-    const permissions = getTeamPermissions(effectiveRole);
+  return new Map(
+    memberships.map((membership) => {
+      const orgMembership =
+        membership.team.parentId == null ? undefined : roleByTeamId.get(membership.team.parentId);
+      const effectiveRole = getEffectiveRole(orgMembership, membership.role);
 
-    return [membership.team.id, permissions] as const;
-  });
-
-  const results = await Promise.all(permissionPromises);
-  return new Map(results);
+      return [membership.team.id, getTeamPermissions(effectiveRole)] as const;
+    })
+  );
 }
