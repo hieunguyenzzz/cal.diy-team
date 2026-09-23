@@ -8,7 +8,6 @@ import type { TrpcSessionUser } from "@calcom/trpc/server/types";
 import { TRPCError } from "@trpc/server";
 import type { TTeamsAndUserProfilesQueryInputSchema } from "./teamsAndUserProfilesQuery.schema";
 
-
 type TeamsAndUserProfileOptions = {
   ctx: {
     user: NonNullable<TrpcSessionUser>;

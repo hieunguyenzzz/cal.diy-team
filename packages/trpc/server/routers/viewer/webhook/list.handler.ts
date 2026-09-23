@@ -18,11 +18,14 @@ type ListOptions = {
 
 export const listHandler = async ({ ctx, input }: ListOptions): Promise<Webhook[]> => {
   const { repository } = getWebhookFeature();
-  const teamIds = await new TeamPermissionService(new MembershipRepository(prisma)).getTeamIdsWithRole({
-    userId: ctx.user.id,
-    userRole: ctx.user.role,
-    roles: TEAM_ADMIN_ROLES,
-  });
+  // The repository ignores teamIds when filtering by event type, so skip the membership lookup.
+  const teamIds = input?.eventTypeId
+    ? []
+    : await new TeamPermissionService(new MembershipRepository(prisma)).getTeamIdsWithRole({
+        userId: ctx.user.id,
+        userRole: ctx.user.role,
+        roles: TEAM_ADMIN_ROLES,
+      });
 
   return repository.listWebhooks({
     userId: ctx.user.id,

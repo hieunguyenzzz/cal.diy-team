@@ -44,6 +44,13 @@ describe("webhook list and getByViewer team scoping", () => {
     expect(mockListWebhooks).toHaveBeenCalledWith(expect.objectContaining({ userId: 1, teamIds: [20] }));
   });
 
+  it("list skips the team lookup when filtering by event type", async () => {
+    await listHandler({ ctx: ctxFor(UserPermissionRole.USER), input: { eventTypeId: 42 } });
+
+    expect(prismaMock.membership.findMany).not.toHaveBeenCalled();
+    expect(mockListWebhooks).toHaveBeenCalledWith(expect.objectContaining({ eventTypeId: 42, teamIds: [] }));
+  });
+
   it("list gives the instance admin all of their teams", async () => {
     await listHandler({ ctx: ctxFor(UserPermissionRole.ADMIN), input: undefined });
 
