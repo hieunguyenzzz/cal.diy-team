@@ -48,7 +48,12 @@ RUN yarn workspace @calcom/trpc run build
 RUN yarn --cwd packages/embeds/embed-core workspace @calcom/embed-core run build
 RUN yarn --cwd apps/web workspace @calcom/web run copy-app-store-static
 RUN yarn --cwd apps/web workspace @calcom/web run build
-RUN rm -rf node_modules/.cache .yarn/cache apps/web/.next/cache
+# BUILD_STANDALONE=true (above) makes `next build` also emit .next/standalone,
+# a self-contained server + pruned node_modules - but start.sh still boots via
+# `yarn start`, not the standalone server, so it's ~400MB of dead weight. We
+# leave BUILD_STANDALONE itself untouched (removing it is a separate, unverified
+# change) and just delete the output we don't consume.
+RUN rm -rf node_modules/.cache .yarn/cache apps/web/.next/cache apps/web/.next/standalone
 
 FROM node:20 AS builder-two
 
@@ -67,6 +72,20 @@ COPY --from=builder /calcom/packages/prisma/schema.prisma ./prisma/schema.prisma
 COPY scripts scripts
 RUN chmod +x scripts/*
 
+# Docker's COPY flattens a directory source's *contents* into the destination,
+# so a wildcard match of many package dirs (e.g. node_modules/[a-f]*) would
+# merge their contents together instead of keeping each as its own directory.
+# Pre-bucket with `mv` (which has no such quirk) so the runner stage can COPY
+# each bucket as a single whole-directory source and keep every layer small.
+# The loop (not a fixed `mv` per glob) means an empty match never breaks the
+# build, and the `other` bucket is a catch-all for anything the case doesn't
+# name explicitly, so a future dependency change can't silently fail this.
+RUN set -e; for b in dot upper a-f g-m n-s t-z scoped-a-h scoped-i-r scoped-s-z other; do mkdir -p /nm-buckets/$b; done; \
+  for e in node_modules/* node_modules/.[!.]*; do [ -e "$e" ] || [ -L "$e" ] || continue; n=${e#node_modules/}; \
+    case "$n" in .*) b=dot;; [A-Z]*) b=upper;; [a-f]*) b=a-f;; [g-m]*) b=g-m;; [n-s]*) b=n-s;; [t-z]*) b=t-z;; \
+      @[0-9a-h]*) b=scoped-a-h;; @[i-r]*) b=scoped-i-r;; @[s-z]*) b=scoped-s-z;; *) b=other;; esac; mv "$e" /nm-buckets/$b/; done; \
+  rmdir node_modules
+
 # Save value used during this build stage. If NEXT_PUBLIC_WEBAPP_URL and BUILT_NEXT_PUBLIC_WEBAPP_URL differ at
 # run-time, then start.sh will find/replace static values again.
 ENV NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL \
@@ -80,7 +99,26 @@ WORKDIR /calcom
 
 RUN apt-get update && apt-get install -y --no-install-recommends netcat-openbsd wget && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder-two /calcom ./
+# Split what used to be a single ~1.1GB COPY layer into several smaller ones.
+# A single giant layer is more likely to stall mid-download on a slow/throttled
+# registry blob (SBS-579). Each node_modules bucket below is a whole directory
+# (see the pre-bucketing step in builder-two), so COPY nests it correctly.
+COPY --from=builder-two /calcom/package.json /calcom/.yarnrc.yml /calcom/turbo.json /calcom/i18n.json /calcom/yarn.lock ./
+COPY --from=builder-two /calcom/.yarn ./.yarn
+COPY --from=builder-two /calcom/prisma ./prisma
+COPY --from=builder-two /calcom/scripts ./scripts
+COPY --from=builder-two /calcom/packages ./packages
+COPY --from=builder-two /calcom/apps/web ./apps/web
+COPY --from=builder-two /nm-buckets/dot ./node_modules/
+COPY --from=builder-two /nm-buckets/upper ./node_modules/
+COPY --from=builder-two /nm-buckets/a-f ./node_modules/
+COPY --from=builder-two /nm-buckets/g-m ./node_modules/
+COPY --from=builder-two /nm-buckets/n-s ./node_modules/
+COPY --from=builder-two /nm-buckets/t-z ./node_modules/
+COPY --from=builder-two /nm-buckets/scoped-a-h ./node_modules/
+COPY --from=builder-two /nm-buckets/scoped-i-r ./node_modules/
+COPY --from=builder-two /nm-buckets/scoped-s-z ./node_modules/
+COPY --from=builder-two /nm-buckets/other ./node_modules/
 ARG NEXT_PUBLIC_WEBAPP_URL=http://localhost:3000
 ENV NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL \
   BUILT_NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL
