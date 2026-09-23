@@ -8,16 +8,15 @@ import authedProcedure from "./authedProcedure";
 type PermissionString = string;
 
 /**
- * Creates a procedure that checks team-level PBAC permissions.
- * The teamId is expected to come from input.teamId.
+ * Creates a procedure that requires an accepted membership with one of `roles` in input.teamId.
+ * The instance admin always passes.
  *
  * @param permission - Named in the FORBIDDEN message (e.g., "booking.readTeamBookings")
- * @param fallbackRoles - Accepted team roles that may pass (defaults to ["ADMIN", "OWNER"]); there is no PBAC
- * @returns A procedure that checks the specified permission for the team
+ * @param roles - Team roles allowed through (defaults to ADMIN and OWNER)
  */
 function createTeamPbacProcedure(
   permission: PermissionString,
-  fallbackRoles: MembershipRole[] = [MembershipRole.ADMIN, MembershipRole.OWNER]
+  roles: MembershipRole[] = [MembershipRole.ADMIN, MembershipRole.OWNER]
 ): ReturnType<typeof authedProcedure.input> {
   return authedProcedure
     .input(
@@ -31,7 +30,7 @@ function createTeamPbacProcedure(
         userId: ctx.user.id,
         userRole: ctx.user.role,
         teamId: input.teamId,
-        roles: fallbackRoles,
+        roles,
       });
 
       if (!hasPermission) {
