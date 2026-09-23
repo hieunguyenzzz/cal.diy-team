@@ -181,6 +181,7 @@ describe("TeamMemberRow", () => {
     await options.changeRole.onSuccess?.();
     expect(invalidateMembers).toHaveBeenCalledWith({ teamId: 10 });
     expect(invalidateGet).toHaveBeenCalledWith({ teamId: 10 });
+    expect(invalidateList).toHaveBeenCalled();
   });
 
   it("removes another member after confirmation and stays on the page", async () => {
@@ -193,6 +194,13 @@ describe("TeamMemberRow", () => {
     await options.remove.onSuccess?.();
     expect(invalidateMembers).toHaveBeenCalledWith({ teamId: 10 });
     expect(push).not.toHaveBeenCalled();
+    expect(invalidateList).toHaveBeenCalled();
+  });
+
+  it("gives the remove button an accessible name", () => {
+    renderRow(row(2, "MEMBER"), actor("ADMIN"));
+
+    expect(screen.getByRole("button", { name: "remove" })).toBeTruthy();
   });
 
   it("shows the server's message when an action fails, e.g. the last-owner guard", () => {

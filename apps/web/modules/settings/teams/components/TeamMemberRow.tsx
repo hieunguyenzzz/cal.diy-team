@@ -40,6 +40,7 @@ export function TeamMemberRow({ teamId, member, actor }: Props) {
       await Promise.all([
         utils.viewer.teams.listMembers.invalidate({ teamId }),
         utils.viewer.teams.get.invalidate({ teamId }),
+        utils.viewer.teams.list.invalidate(),
       ]);
     },
     onError: showError,
@@ -54,7 +55,11 @@ export function TeamMemberRow({ teamId, member, actor }: Props) {
         return;
       }
       showToast(t("member_removed"), "success");
-      await utils.viewer.teams.listMembers.invalidate({ teamId });
+      // The teams list shows member counts and the caller's role, so it goes stale too.
+      await Promise.all([
+        utils.viewer.teams.listMembers.invalidate({ teamId }),
+        utils.viewer.teams.list.invalidate(),
+      ]);
     },
     onError: showError,
   });

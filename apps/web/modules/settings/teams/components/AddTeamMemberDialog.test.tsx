@@ -3,9 +3,10 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AddTeamMemberDialog } from "./AddTeamMemberDialog";
 
-const { mutate, invalidate, showToast, mutationOptions } = vi.hoisted(() => ({
+const { mutate, invalidate, invalidateList, showToast, mutationOptions } = vi.hoisted(() => ({
   mutate: vi.fn(),
   invalidate: vi.fn(),
+  invalidateList: vi.fn(),
   showToast: vi.fn(),
   mutationOptions: {} as {
     onSuccess?: () => Promise<void>;
@@ -14,7 +15,9 @@ const { mutate, invalidate, showToast, mutationOptions } = vi.hoisted(() => ({
 }));
 vi.mock("@calcom/trpc/react", () => ({
   trpc: {
-    useUtils: () => ({ viewer: { teams: { listMembers: { invalidate } } } }),
+    useUtils: () => ({
+      viewer: { teams: { listMembers: { invalidate }, list: { invalidate: invalidateList } } },
+    }),
     viewer: {
       teams: {
         addMember: {
@@ -104,6 +107,7 @@ describe("AddTeamMemberDialog", () => {
     await mutationOptions.onSuccess?.();
 
     expect(invalidate).toHaveBeenCalledWith({ teamId: 10 });
+    expect(invalidateList).toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 

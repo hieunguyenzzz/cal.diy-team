@@ -6,6 +6,9 @@ type TeamEventTypeAction = "create" | "read" | "update" | "delete";
 
 const TEAM_ADMIN_ROLES: readonly MembershipRole[] = [MembershipRole.ADMIN, MembershipRole.OWNER];
 
+// Only owners may grant, revoke or remove the OWNER role (the instance admin bypasses this separately).
+const TEAM_OWNER_ROLES: readonly MembershipRole[] = [MembershipRole.OWNER];
+
 const ALL_ROLES: readonly MembershipRole[] = [
   MembershipRole.MEMBER,
   MembershipRole.ADMIN,
@@ -44,7 +47,7 @@ export function roleAllowsTeamEventTypeAction(role: MembershipRole, action: Team
   return EVENT_TYPE_ACTION_ROLES[action].includes(role);
 }
 
-export { ALL_ROLES, EVENT_TYPE_ACTION_ROLES, TEAM_ADMIN_ROLES };
+export { ALL_ROLES, EVENT_TYPE_ACTION_ROLES, TEAM_ADMIN_ROLES, TEAM_OWNER_ROLES };
 // The role a session user can carry; INACTIVE_ADMIN is an admin who has not re-verified yet.
 type SessionUserRole = UserPermissionRole | "INACTIVE_ADMIN";
 

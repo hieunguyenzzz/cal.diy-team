@@ -1,5 +1,5 @@
 import type { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
-import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
+import { TEAM_ADMIN_ROLES, TEAM_OWNER_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
 import { validateTeamLogo } from "@calcom/features/teams/lib/validateTeamLogo";
 import type { TeamProfileUpdate, TeamRepository } from "@calcom/features/teams/repositories/TeamRepository";
 import type { UserRepository } from "@calcom/features/users/repositories/UserRepository";
@@ -27,7 +27,6 @@ interface ITeamServiceDeps {
   uploadLogo: (args: { teamId: number; logo: string }) => Promise<string>;
 }
 
-const OWNER_ONLY: readonly MembershipRole[] = [MembershipRole.OWNER];
 const REMOVE_MEMBER_DENIED = "Only team admins can remove members";
 
 class TeamService {
@@ -167,7 +166,7 @@ class TeamService {
 
     const touchesOwner = target.role === MembershipRole.OWNER || role === MembershipRole.OWNER;
     if (touchesOwner) {
-      await this.assertTeamRole(actor, teamId, OWNER_ONLY, "Only an owner can grant or revoke owner");
+      await this.assertTeamRole(actor, teamId, TEAM_OWNER_ROLES, "Only an owner can grant or revoke owner");
     }
     if (target.role === MembershipRole.OWNER && target.accepted && role !== MembershipRole.OWNER) {
       await this.assertNotLastOwner(teamId);
@@ -190,7 +189,7 @@ class TeamService {
       await this.assertTeamRole(actor, teamId, TEAM_ADMIN_ROLES, REMOVE_MEMBER_DENIED);
     }
     if (target.role === MembershipRole.OWNER && !isLeaving) {
-      await this.assertTeamRole(actor, teamId, OWNER_ONLY, "Only an owner can remove an owner");
+      await this.assertTeamRole(actor, teamId, TEAM_OWNER_ROLES, "Only an owner can remove an owner");
     }
     if (target.role === MembershipRole.OWNER && target.accepted) {
       await this.assertNotLastOwner(teamId);

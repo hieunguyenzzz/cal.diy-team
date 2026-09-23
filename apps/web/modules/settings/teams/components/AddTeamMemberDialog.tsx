@@ -2,6 +2,7 @@
 
 import { Dialog } from "@calcom/features/components/controlled-dialog";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
+import { MembershipRole } from "@calcom/prisma/enums";
 import { trpc } from "@calcom/trpc/react";
 import { Button } from "@calcom/ui/components/button";
 import { DialogContent, DialogFooter } from "@calcom/ui/components/dialog";
@@ -16,14 +17,14 @@ type FormValues = { email: string; role: TeamMemberRole };
 type ServerError = { message: string; isUnknownUser: boolean };
 type Props = { teamId: number; open: boolean; onOpenChange: (open: boolean) => void };
 
-const ROLES: TeamMemberRole[] = ["MEMBER", "ADMIN", "OWNER"];
+const ROLES: TeamMemberRole[] = [MembershipRole.MEMBER, MembershipRole.ADMIN, MembershipRole.OWNER];
 
 // Only rendered for the instance admin: adding people to teams is their job alone (product decision).
 export function AddTeamMemberDialog({ teamId, open, onOpenChange }: Props) {
   const { t } = useLocale();
   const utils = trpc.useUtils();
   const [serverError, setServerError] = useState<ServerError | null>(null);
-  const form = useForm<FormValues>({ defaultValues: { email: "", role: "MEMBER" } });
+  const form = useForm<FormValues>({ defaultValues: { email: "", role: MembershipRole.MEMBER } });
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -36,7 +37,10 @@ export function AddTeamMemberDialog({ teamId, open, onOpenChange }: Props) {
   const addMember = trpc.viewer.teams.addMember.useMutation({
     onSuccess: async () => {
       showToast(t("team_member_added"), "success");
-      await utils.viewer.teams.listMembers.invalidate({ teamId });
+      await Promise.all([
+        utils.viewer.teams.listMembers.invalidate({ teamId }),
+        utils.viewer.teams.list.invalidate(),
+      ]);
       handleOpenChange(false);
     },
     // There is no invitation flow, so an unknown email means the user must be created first.

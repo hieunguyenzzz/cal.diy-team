@@ -279,6 +279,9 @@ export class UserRepository {
 
   // The shared client's excludeLockedUsers extension adds `locked: false` unless the where names `locked`;
   // naming both values opts out, for callers that must see locked users to refuse them. Email is unique.
+  // This relies on the extension's substring check for `"locked":` in the serialised where (a Boolean
+  // filter has no `in`, hence the OR). TeamService's DB integration test with a real locked user is the
+  // guard if the extension ever changes.
   async findByEmailIncludeLocked({ email }: { email: string }) {
     return this.prismaClient.user.findFirst({
       where: { email: email.toLowerCase(), OR: [{ locked: true }, { locked: false }] },
