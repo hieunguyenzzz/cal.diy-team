@@ -2,6 +2,7 @@ import { EventTypeRepository } from "@calcom/features/eventtypes/repositories/ev
 import { hasFilter } from "@calcom/features/filters/lib/hasFilter";
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { getPlaceholderAvatar } from "@calcom/lib/defaultAvatarImage";
 import { ErrorCode } from "@calcom/lib/errorCodes";
@@ -11,16 +12,11 @@ import logger from "@calcom/lib/logger";
 import { markdownToSafeHTML } from "@calcom/lib/markdownToSafeHTML";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import prisma from "@calcom/prisma";
+import type { UserPermissionRole } from "@calcom/prisma/enums";
 import { MembershipRole, SchedulingType } from "@calcom/prisma/enums";
 import { eventTypeMetaDataSchemaWithUntypedApps, teamMetadataSchema } from "@calcom/prisma/zod-utils";
 import { orderBy } from "lodash";
 
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
 const getBookerBaseUrl = async (_orgSlug?: string | number | null): Promise<string> =>
   process.env.NEXT_PUBLIC_WEBAPP_URL || "https://app.cal.com";
 const getBookerBaseUrlSync = (_orgSlug?: string | number | null): string =>
@@ -30,6 +26,7 @@ const log = logger.getSubLogger({ prefix: ["viewer.eventTypes.getByViewer"] });
 
 type User = {
   id: number;
+  role?: UserPermissionRole;
   profile: {
     upId: string;
   };
@@ -58,17 +55,17 @@ export const getEventTypesByViewer = async (user: User, filters?: Filters) => {
     shouldListUserEvents = true;
   }
 
-  const permissionCheckService = new PermissionCheckService();
+  const teamPermissionService = new TeamPermissionService(new MembershipRepository(prisma));
   const [teamsWithEventTypeReadPermission, teamsWithEventTypeUpdatePermission] = await Promise.all([
-    permissionCheckService.getTeamIdsWithPermission({
+    teamPermissionService.getTeamIdsForEventTypeAction({
       userId: user.id,
-      permission: "eventType.read",
-      fallbackRoles: [MembershipRole.MEMBER, MembershipRole.ADMIN, MembershipRole.OWNER],
+      userRole: user.role,
+      action: "read",
     }),
-    permissionCheckService.getTeamIdsWithPermission({
+    teamPermissionService.getTeamIdsForEventTypeAction({
       userId: user.id,
-      permission: "eventType.update",
-      fallbackRoles: [MembershipRole.ADMIN, MembershipRole.OWNER],
+      userRole: user.role,
+      action: "update",
     }),
   ]);
 
