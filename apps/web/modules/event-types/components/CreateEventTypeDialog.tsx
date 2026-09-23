@@ -12,7 +12,8 @@ import { showToast } from "@calcom/ui/components/toast";
 import { isValidPhoneNumber } from "libphonenumber-js/max";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
-import { useCreateEventType } from "~/event-types/hooks/useCreateEventType";
+import { useCreateEventType } from "@calcom/web/modules/event-types/hooks/useCreateEventType";
+import { TeamEventTypeForm } from "./TeamEventTypeForm";
 
 const WEBSITE_URL = process.env.NEXT_PUBLIC_WEBSITE_URL ?? "";
 
@@ -114,7 +115,23 @@ export function CreateEventTypeDialog({ profileOptions }: { profileOptions: Prof
         enableOverflow
         title={teamId ? t("add_new_team_event_type") : t("add_new_event_type")}
         description={t("new_event_type_to_book_description")}>
-        {teamId ? null : (
+        {teamId ? (
+          teamProfile && permissions.canCreateEventType ? (
+            <TeamEventTypeForm
+              form={form}
+              teamId={teamId}
+              pageSlug={teamProfile.slug}
+              urlPrefix={urlPrefix}
+              isPending={createMutation.isPending}
+              SubmitButton={SubmitButton}
+              handleSubmit={(values) => {
+                createMutation.mutate(values);
+              }}
+            />
+          ) : (
+            <p className="text-sm text-subtle">{t("error_event_type_unauthorized_create")}</p>
+          )
+        ) : (
           <CreateEventTypeForm
             urlPrefix={urlPrefix}
             isPending={createMutation.isPending}

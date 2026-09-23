@@ -45,6 +45,7 @@ import {
   CreateEventTypeDialog,
   type ProfileOption,
 } from "@calcom/web/modules/event-types/components/CreateEventTypeDialog";
+import { NewEventTypeButton } from "@calcom/web/modules/event-types/components/NewEventTypeButton";
 import { DuplicateDialog } from "@calcom/web/modules/event-types/components/DuplicateDialog";
 import { InfiniteSkeletonLoader } from "@calcom/web/modules/event-types/components/SkeletonLoader";
 import { canDeleteEventTypesInGroup } from "@calcom/web/modules/event-types/lib/canDeleteEventTypes";
@@ -935,11 +936,7 @@ const CTA = ({ profileOptions }: { profileOptions: ProfileOption[] }) => {
         }}
         placeholder={t("search")}
       />
-      <Button
-        data-testid="new-event-type"
-        href={`?dialog=new&eventPage=${profileOptions[0]?.slug ?? ""}`}>
-        {t("new")}
-      </Button>
+      <NewEventTypeButton profileOptions={profileOptions} />
       <CreateEventTypeDialog profileOptions={profileOptions} />
     </div>
   );
