@@ -68,7 +68,9 @@ describe("TeamsSettingsNav", () => {
   it("labels the list link apart from the section header", () => {
     render(<TeamsSettingsNav />);
 
-    expect(screen.getByRole("link").textContent).toBe("all_teams");
+    const link = screen.getByRole("link");
+    expect(link.textContent).toBe("all_teams");
+    expect(link.getAttribute("href")).toBe("/settings/teams");
   });
 
   it("shows a team name with dots verbatim rather than as a translation key", () => {

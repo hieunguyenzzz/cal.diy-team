@@ -47,12 +47,19 @@ vi.mock("@calcom/ui/components/dialog", () => ({
   DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("@calcom/web/modules/timezone/components/TimezoneSelect", () => ({
-  TimezoneSelect: ({ value, onChange }: { value: string; onChange: (option: { value: string }) => void }) => (
-    <input aria-label="timezone" value={value} onChange={(e) => onChange({ value: e.target.value })} />
-  ),
+  TimezoneSelect: ({
+    inputId,
+    value,
+    onChange,
+  }: {
+    inputId: string;
+    value: string;
+    onChange: (option: { value: string }) => void;
+  }) => <input id={inputId} value={value} onChange={(e) => onChange({ value: e.target.value })} />,
 }));
 
-const renderDialog = () => render(<CreateTeamDialog open onOpenChange={vi.fn()} />);
+const onOpenChange = vi.fn();
+const renderDialog = () => render(<CreateTeamDialog open onOpenChange={onOpenChange} />);
 const field = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
 
 describe("CreateTeamDialog", () => {
@@ -117,5 +124,35 @@ describe("CreateTeamDialog", () => {
       "textContent",
       'The slug "sales" is already taken by another team'
     );
+  });
+
+  it("clears the server error when the form is submitted again", async () => {
+    renderDialog();
+    mutationOptions.onError?.({ message: "Slug taken" });
+    expect(await screen.findByRole("alert")).toBeTruthy();
+
+    fireEvent.change(field("team_name"), { target: { value: "Sales" } });
+    fireEvent.click(screen.getByText("create"));
+
+    await waitFor(() => expect(mutate).toHaveBeenCalled());
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("resets the form and the server error when cancelled, so reopening starts clean", async () => {
+    const { rerender } = renderDialog();
+    fireEvent.change(field("team_name"), { target: { value: "Sales" } });
+    fireEvent.change(field("team_url"), { target: { value: "custom" } });
+    mutationOptions.onError?.({ message: "Slug taken" });
+    await screen.findByRole("alert");
+
+    fireEvent.click(screen.getByText("cancel"));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    rerender(<CreateTeamDialog open={false} onOpenChange={onOpenChange} />);
+    rerender(<CreateTeamDialog open onOpenChange={onOpenChange} />);
+
+    expect(field("team_name").value).toBe("");
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.change(field("team_name"), { target: { value: "Ops" } });
+    expect(field("team_url").value).toBe("ops");
   });
 });

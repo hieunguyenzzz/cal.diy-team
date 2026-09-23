@@ -49,8 +49,17 @@ export function CreateTeamDialog({
   });
   const slugField = form.register("slug", { onChange: () => setSlugEdited(true) });
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      form.reset();
+      setSlugEdited(false);
+      setServerError(null);
+    }
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent type="creation" title={t("create_new_team")}>
         <Form
           form={form}
@@ -75,8 +84,7 @@ export function CreateTeamDialog({
           <div>
             <Label htmlFor="team-timezone">{t("timezone")}</Label>
             <TimezoneSelect
-              id="team-timezone"
-              aria-label={t("timezone")}
+              inputId="team-timezone"
               value={timeZone}
               onChange={(option) => {
                 if (option) form.setValue("timeZone", option.value);
@@ -92,7 +100,7 @@ export function CreateTeamDialog({
             {...form.register("bio")}
           />
           <DialogFooter showDivider>
-            <Button type="button" color="secondary" onClick={() => onOpenChange(false)}>
+            <Button type="button" color="secondary" onClick={() => handleOpenChange(false)}>
               {t("cancel")}
             </Button>
             <Button type="submit" loading={createTeam.isPending}>
