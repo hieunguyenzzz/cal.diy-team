@@ -16,11 +16,8 @@ test.describe("Onboarding", () => {
       });
       await user.apiLogin();
       await page.goto("/onboarding/getting-started");
-      await page.waitForURL("/onboarding/getting-started");
 
-      await test.step("step 1 - Plan Selection", async () => {
-        await expect(page.getByTestId("onboarding-continue-btn")).toBeVisible();
-        await page.getByTestId("onboarding-continue-btn").click();
+      await test.step("step 1 - Plan selection is skipped", async () => {
         await page.waitForURL(/.*\/onboarding\/personal\/settings/);
       });
 

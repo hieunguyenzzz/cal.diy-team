@@ -1,7 +1,6 @@
-import type { PersistOptions } from "zustand/middleware";
 import { create } from "zustand";
+import type { PersistOptions } from "zustand/middleware";
 import { persist } from "zustand/middleware";
-
 import { onboardingIndexedDBStorage } from "./onboarding-storage";
 
 // Thresholds for detecting oversized images (in characters of base64 string)
@@ -90,7 +89,6 @@ export interface OnboardingState {
   personalDetails: PersonalDetails;
 
   // Actions
-  setSelectedPlan: (plan: PlanType) => void;
   setOrganizationDetails: (details: Partial<OrganizationDetails>) => void;
   setOrganizationBrand: (brand: Partial<OrganizationBrand>) => void;
   setTeams: (teams: Team[]) => void;
@@ -113,7 +111,6 @@ export interface OnboardingState {
 
   // Reset
   resetOnboarding: () => void;
-  resetOnboardingPreservingPlan: () => void;
 }
 
 const initialState = {
@@ -157,8 +154,6 @@ export const useOnboardingStore = create<OnboardingState>()(
     (set) => ({
       ...initialState,
 
-      setSelectedPlan: (plan) => set({ selectedPlan: plan }),
-
       setOrganizationDetails: (details) =>
         set((state) => ({
           organizationDetails: { ...state.organizationDetails, ...details },
@@ -197,11 +192,6 @@ export const useOnboardingStore = create<OnboardingState>()(
         })),
 
       resetOnboarding: () => set(initialState),
-      resetOnboardingPreservingPlan: () =>
-        set((state) => ({
-          ...initialState,
-          selectedPlan: state.selectedPlan,
-        })),
     }),
     {
       name: "cal-onboarding-storage", // Storage key
