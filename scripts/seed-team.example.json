@@ -1,0 +1,36 @@
+{
+  "_comment": "Example config for scripts/seed-team.ts. Keys starting with '_' are ignored. Keep real staff configs out of git: copy this to scripts/<name>.local.json (gitignored) or keep it outside the repo.",
+  "team": {
+    "name": "Example Team",
+    "slug": "example-team",
+    "timeZone": "Europe/London"
+  },
+  "members": ["alice@example.com", "bob@example.com", "carol@example.com"],
+  "users": ["dave@example.com"],
+  "eventTypes": [
+    {
+      "slug": "showroom-visit",
+      "title": "Showroom Visit",
+      "length": 60,
+      "schedulingType": "COLLECTIVE",
+      "hosts": ["alice@example.com"],
+      "location": { "type": "inPerson", "address": "1 Example Street, London EC1A 1AA" }
+    },
+    {
+      "slug": "joint-consultation",
+      "title": "Joint Consultation",
+      "length": 30,
+      "schedulingType": "COLLECTIVE",
+      "hosts": ["alice@example.com", "bob@example.com"],
+      "location": { "type": "attendeeInPerson" }
+    },
+    {
+      "slug": "intro-call",
+      "title": "Intro Call",
+      "length": 15,
+      "schedulingType": "ROUND_ROBIN",
+      "hosts": ["bob@example.com", "carol@example.com"],
+      "location": { "type": "link", "link": "https://meet.example.com/intro-call" }
+    }
+  ]
+}
