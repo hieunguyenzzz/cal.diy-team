@@ -328,16 +328,13 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     throw new TRPCError({ code: "BAD_REQUEST", message: t(bookerLayoutsError) });
   }
 
+  const scheduleRepo = new ScheduleRepository(ctx.prisma);
+  const isOwnSchedule = async (scheduleId: number) =>
+    (await scheduleRepo.findScheduleByIdForOwnershipCheck({ scheduleId }))?.userId === ctx.user.id;
+
   const requestedSchedule = schedule === undefined ? scalarScheduleId : schedule;
   if (requestedSchedule) {
-    // Check that the schedule belongs to the user
-    const userScheduleQuery = await ctx.prisma.schedule.findFirst({
-      where: {
-        userId: ctx.user.id,
-        id: requestedSchedule,
-      },
-    });
-    if (userScheduleQuery) {
+    if (await isOwnSchedule(requestedSchedule)) {
       data.schedule = {
         connect: {
           id: requestedSchedule,
@@ -353,20 +350,14 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
   }
 
   if (instantMeetingSchedule) {
-    const userInstantMeetingSchedule = await ctx.prisma.schedule.findFirst({
-      where: {
-        userId: ctx.user.id,
-        id: instantMeetingSchedule,
-      },
-      select: { id: true },
-    });
-    if (userInstantMeetingSchedule) {
+    if (await isOwnSchedule(instantMeetingSchedule)) {
       data.instantMeetingSchedule = {
         connect: {
           id: instantMeetingSchedule,
         },
       };
     }
+    // Deliberately keyed on `schedule`, not the scalar scheduleId, to keep the pre-existing behaviour.
   } else if (schedule === null) {
     data.instantMeetingSchedule = {
       disconnect: true,
@@ -377,7 +368,6 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
 
   if (restrictionScheduleId) {
     // Verify that the user owns the restriction schedule or is a team member
-    const scheduleRepo = new ScheduleRepository(ctx.prisma);
     const restrictionSchedule = await scheduleRepo.findScheduleByIdForOwnershipCheck({
       scheduleId: restrictionScheduleId,
     });

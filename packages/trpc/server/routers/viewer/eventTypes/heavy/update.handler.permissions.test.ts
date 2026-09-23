@@ -57,6 +57,13 @@ const mockEventType = (eventType: typeof baseEventType & { team: typeof teamEven
   );
 };
 
+// Schedules are looked up by id; ownership is decided by comparing userId with the caller (user 1).
+const givenScheduleOwner = (userId: number) => {
+  prismaMock.schedule.findUnique.mockResolvedValue({ userId } as Awaited<
+    ReturnType<typeof prismaMock.schedule.findUnique>
+  >);
+};
+
 describe("updateHandler teamId handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -137,20 +144,18 @@ describe("updateHandler ownership of referenced records", () => {
   const updateData = () => prismaMock.eventType.update.mock.calls[0][0].data;
 
   it("does not connect an instant meeting schedule owned by someone else", async () => {
-    prismaMock.schedule.findFirst.mockResolvedValue(null);
+    givenScheduleOwner(2);
 
     await updateHandler({ ctx, input: { id: 1, instantMeetingSchedule: 77 } as UpdateOptions["input"] });
 
-    expect(prismaMock.schedule.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId: 1, id: 77 } })
+    expect(prismaMock.schedule.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 77 } })
     );
     expect(updateData()).not.toHaveProperty("instantMeetingSchedule");
   });
 
   it("connects the caller's own instant meeting schedule", async () => {
-    prismaMock.schedule.findFirst.mockResolvedValue({ id: 77 } as Awaited<
-      ReturnType<typeof prismaMock.schedule.findFirst>
-    >);
+    givenScheduleOwner(1);
 
     await updateHandler({ ctx, input: { id: 1, instantMeetingSchedule: 77 } as UpdateOptions["input"] });
 
@@ -158,7 +163,7 @@ describe("updateHandler ownership of referenced records", () => {
   });
 
   it("never writes the scalar instantMeetingScheduleId", async () => {
-    prismaMock.schedule.findFirst.mockResolvedValue(null);
+    givenScheduleOwner(2);
 
     await updateHandler({ ctx, input: { id: 1, instantMeetingScheduleId: 88 } as UpdateOptions["input"] });
 
@@ -167,26 +172,43 @@ describe("updateHandler ownership of referenced records", () => {
   });
 
   it("does not write a foreign scalar scheduleId", async () => {
-    prismaMock.schedule.findFirst.mockResolvedValue(null);
+    givenScheduleOwner(2);
 
     await updateHandler({ ctx, input: { id: 1, scheduleId: 66 } as UpdateOptions["input"] });
 
-    expect(prismaMock.schedule.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId: 1, id: 66 } })
+    expect(prismaMock.schedule.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 66 } })
     );
     expect(updateData()).not.toHaveProperty("scheduleId");
     expect(updateData()).not.toHaveProperty("schedule");
   });
 
   it("connects the caller's own schedule when sent as a scalar scheduleId (API v2 sends this)", async () => {
-    prismaMock.schedule.findFirst.mockResolvedValue({ id: 66 } as Awaited<
-      ReturnType<typeof prismaMock.schedule.findFirst>
-    >);
+    givenScheduleOwner(1);
 
     await updateHandler({ ctx, input: { id: 1, scheduleId: 66 } as UpdateOptions["input"] });
 
     expect(updateData()).not.toHaveProperty("scheduleId");
     expect(updateData()).toMatchObject({ schedule: { connect: { id: 66 } } });
+  });
+
+  it("disconnects the schedule when the scalar scheduleId is null", async () => {
+    await updateHandler({ ctx, input: { id: 1, scheduleId: null } as UpdateOptions["input"] });
+
+    expect(updateData()).toMatchObject({ schedule: { disconnect: true } });
+    expect(updateData()).not.toHaveProperty("scheduleId");
+  });
+
+  it("uses schedule over scheduleId when both are sent", async () => {
+    givenScheduleOwner(1);
+
+    await updateHandler({ ctx, input: { id: 1, schedule: 11, scheduleId: 66 } as UpdateOptions["input"] });
+
+    expect(prismaMock.schedule.findUnique).toHaveBeenCalledTimes(1);
+    expect(prismaMock.schedule.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 11 } })
+    );
+    expect(updateData()).toMatchObject({ schedule: { connect: { id: 11 } } });
   });
 
   it("never writes profileId from input", async () => {

@@ -46,6 +46,13 @@ const mockMembership = (membership: { role: MembershipRole; accepted: boolean } 
   );
 };
 
+// Schedules are looked up by id; ownership is decided by comparing userId with the caller (user 1).
+const givenScheduleOwner = (userId: number) => {
+  prismaMock.schedule.findUnique.mockResolvedValue({ userId } as Awaited<
+    ReturnType<typeof prismaMock.schedule.findUnique>
+  >);
+};
+
 describe("createHandler team permissions", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -134,21 +141,19 @@ describe("createHandler schedule ownership", () => {
   });
 
   it("does not connect a schedule owned by someone else", async () => {
-    prismaMock.schedule.findFirst.mockResolvedValue(null);
+    givenScheduleOwner(2);
 
     await createHandler({ ctx: buildCtx(), input: personalInput });
 
-    expect(prismaMock.schedule.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId: 1, id: 66 } })
+    expect(prismaMock.schedule.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 66 } })
     );
     expect(mockCreate.mock.calls[0][0]).not.toHaveProperty("schedule");
     expect(mockCreate.mock.calls[0][0]).not.toHaveProperty("scheduleId");
   });
 
   it("connects the caller's own schedule", async () => {
-    prismaMock.schedule.findFirst.mockResolvedValue({ id: 66 } as Awaited<
-      ReturnType<typeof prismaMock.schedule.findFirst>
-    >);
+    givenScheduleOwner(1);
 
     await createHandler({ ctx: buildCtx(), input: personalInput });
 
