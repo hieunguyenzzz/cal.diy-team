@@ -1,3 +1,4 @@
+import type { UserPermissionRole } from "@calcom/prisma/enums";
 import { MembershipRole } from "@calcom/prisma/enums";
 
 // Pure role tables with no repository imports, so the server and the web client share one rule.
@@ -44,4 +45,7 @@ export function roleAllowsTeamEventTypeAction(role: MembershipRole, action: Team
 }
 
 export { ALL_ROLES, EVENT_TYPE_ACTION_ROLES, TEAM_ADMIN_ROLES };
-export type { TeamEventTypeAction };
+// The role a session user can carry; INACTIVE_ADMIN is an admin who has not re-verified yet.
+type SessionUserRole = UserPermissionRole | "INACTIVE_ADMIN";
+
+export type { SessionUserRole, TeamEventTypeAction };

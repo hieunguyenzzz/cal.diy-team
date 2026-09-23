@@ -1,4 +1,4 @@
-import { roleAllowsTeamEventTypeAction } from "@calcom/features/teams/services/TeamPermissionService";
+import { roleAllowsTeamEventTypeAction } from "@calcom/features/teams/lib/teamEventTypeRoles";
 import type { Membership, Team } from "@calcom/prisma/client";
 
 type TeamMembershipWithTeam = Membership & {

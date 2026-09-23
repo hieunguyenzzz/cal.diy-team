@@ -7,7 +7,7 @@ import type {
   FormValues,
   TabMap,
 } from "@calcom/features/eventtypes/lib/types";
-import type { UserPermissionRole } from "@calcom/prisma/enums";
+import type { SessionUserRole } from "@calcom/features/teams/lib/teamEventTypeRoles";
 import type { customInputSchema } from "@calcom/prisma/zod-utils";
 import type { RouterOutputs } from "@calcom/trpc/react";
 import { Form } from "@calcom/ui/components/form";
@@ -61,7 +61,7 @@ export type EventTypeComponentProps = EventTypeSetupProps & {
   tabsNavigation: VerticalTabItemProps[];
   allowDelete?: boolean;
   saveButtonRef?: React.RefObject<HTMLButtonElement>;
-  userRole?: UserPermissionRole | "INACTIVE_ADMIN" | null;
+  userRole?: SessionUserRole | null;
 };
 
 export const EventType = ({

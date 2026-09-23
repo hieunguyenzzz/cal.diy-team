@@ -1,6 +1,6 @@
 import type { EventTypeSetupProps, FormValues } from "@calcom/features/eventtypes/lib/types";
+import type { SessionUserRole } from "@calcom/features/teams/lib/teamEventTypeRoles";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
-import type { UserPermissionRole } from "@calcom/prisma/enums";
 import { SchedulingType } from "@calcom/prisma/enums";
 import classNames from "@calcom/ui/classNames";
 import { Badge } from "@calcom/ui/components/badge";
@@ -42,7 +42,7 @@ type Props = {
   formMethods: UseFormReturn<FormValues>;
   isUpdateMutationLoading?: boolean;
   // Only the web app knows the instance role; platform atoms leave it out.
-  userRole?: UserPermissionRole | "INACTIVE_ADMIN" | null;
+  userRole?: SessionUserRole | null;
   bookerUrl: string;
   onDelete: (id: number) => void;
   isDeleting?: boolean;

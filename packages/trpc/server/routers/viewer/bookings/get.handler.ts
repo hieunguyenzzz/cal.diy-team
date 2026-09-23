@@ -2,10 +2,8 @@ import dayjs from "@calcom/dayjs";
 import getAllUserBookings from "@calcom/features/bookings/lib/getAllUserBookings";
 import { isTextFilterValue } from "@calcom/features/data-table/lib/utils";
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
-import {
-  TEAM_ADMIN_ROLES,
-  TeamPermissionService,
-} from "@calcom/features/teams/services/TeamPermissionService";
+import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import type { DB } from "@calcom/kysely";
 import kysely from "@calcom/kysely";
 import { parseEventTypeColor } from "@calcom/lib/isEventTypeColor";

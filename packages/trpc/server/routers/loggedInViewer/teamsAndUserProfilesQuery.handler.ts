@@ -1,4 +1,4 @@
-import { rolesForTeamPermission } from "@calcom/features/teams/services/TeamPermissionService";
+import { rolesForTeamPermission } from "@calcom/features/teams/lib/teamEventTypeRoles";
 import { getPlaceholderAvatar } from "@calcom/lib/defaultAvatarImage";
 import { getUserAvatarUrl } from "@calcom/lib/getAvatarUrl";
 import type { PrismaClient } from "@calcom/prisma";

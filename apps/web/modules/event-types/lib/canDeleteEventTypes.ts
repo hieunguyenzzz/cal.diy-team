@@ -1,4 +1,7 @@
-import { roleAllowsTeamEventTypeAction } from "@calcom/features/teams/lib/teamEventTypeRoles";
+import {
+  roleAllowsTeamEventTypeAction,
+  type SessionUserRole,
+} from "@calcom/features/teams/lib/teamEventTypeRoles";
 import type { MembershipRole } from "@calcom/prisma/enums";
 import { UserPermissionRole } from "@calcom/prisma/enums";
 
@@ -25,7 +28,7 @@ export function canDeleteEventType({
 }: {
   teamId: number | null | undefined;
   currentUserMembership: { role: MembershipRole; accepted: boolean } | null | undefined;
-  userRole: UserPermissionRole | "INACTIVE_ADMIN" | null | undefined;
+  userRole: SessionUserRole | null | undefined;
 }): boolean {
   if (!teamId) return true;
   if (userRole === UserPermissionRole.ADMIN) return true;

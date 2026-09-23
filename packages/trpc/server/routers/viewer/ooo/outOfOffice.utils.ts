@@ -1,8 +1,6 @@
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
-import {
-  TEAM_ADMIN_ROLES,
-  TeamPermissionService,
-} from "@calcom/features/teams/services/TeamPermissionService";
+import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import prisma from "@calcom/prisma";
 
 // Team ADMIN/OWNERs may manage out-of-office entries for members of their teams.

@@ -2,9 +2,6 @@ import type { MembershipRepository } from "@calcom/features/membership/repositor
 import {
   ALL_ROLES,
   EVENT_TYPE_ACTION_ROLES,
-  roleAllowsTeamEventTypeAction,
-  rolesForTeamPermission,
-  TEAM_ADMIN_ROLES,
   type TeamEventTypeAction,
   toTeamEventTypeAction,
 } from "@calcom/features/teams/lib/teamEventTypeRoles";
@@ -95,7 +92,3 @@ export class TeamPermissionService {
     return this.canPerformTeamEventTypeAction({ ...check, action });
   }
 }
-
-// Re-exported so existing callers keep importing from the service.
-export { roleAllowsTeamEventTypeAction, rolesForTeamPermission, TEAM_ADMIN_ROLES, toTeamEventTypeAction };
-export type { TeamEventTypeAction };

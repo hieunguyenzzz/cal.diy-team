@@ -1,4 +1,4 @@
-import { roleAllowsTeamEventTypeAction } from "@calcom/features/teams/services/TeamPermissionService";
+import { roleAllowsTeamEventTypeAction } from "@calcom/features/teams/lib/teamEventTypeRoles";
 import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 
 export interface TeamPermissions {

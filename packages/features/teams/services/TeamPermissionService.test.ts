@@ -1,14 +1,14 @@
 import type { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
-import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   roleAllowsTeamEventTypeAction,
   rolesForTeamPermission,
   TEAM_ADMIN_ROLES,
   type TeamEventTypeAction,
-  TeamPermissionService,
   toTeamEventTypeAction,
-} from "./TeamPermissionService";
+} from "@calcom/features/teams/lib/teamEventTypeRoles";
+import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TeamPermissionService } from "./TeamPermissionService";
 
 const mockFindRoleAndAcceptedByUserIdAndTeamId = vi.fn();
 const mockFindFirstAcceptedByUserIdAndTeamIdsAndRoles = vi.fn();
