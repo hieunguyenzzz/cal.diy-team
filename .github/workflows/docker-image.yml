@@ -69,11 +69,13 @@ jobs:
   deploy:
     name: "Trigger Dokploy deploy"
     needs: build
-    # Skip cleanly (not red) until DOKPLOY_DEPLOY_WEBHOOK is added after the switchover.
-    if: github.event_name != 'pull_request' && secrets.DOKPLOY_DEPLOY_WEBHOOK != ''
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
       DEPLOY_WEBHOOK: ${{ secrets.DOKPLOY_DEPLOY_WEBHOOK }}
     steps:
+      # Job-level `if:` can't reference `secrets` directly (breaks workflow parsing),
+      # so skip the step itself until DOKPLOY_DEPLOY_WEBHOOK is added after the switchover.
       - name: Call Dokploy deploy webhook
+        if: env.DEPLOY_WEBHOOK != ''
         run: curl -fsSL -X POST "$DEPLOY_WEBHOOK"
