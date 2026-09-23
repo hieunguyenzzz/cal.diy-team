@@ -17,6 +17,11 @@ const errors = {
   badRequest: ErrorWithCode.Factory.BadRequest("Slug taken"),
   domainCode: new ErrorWithCode(ErrorCode.BookingNotFound, "Booking 5 not found"),
   trpcError: new TRPCError({ code: "CONFLICT", message: "Already exists" }),
+  curatedTrpcError: new TRPCError({
+    code: "BAD_REQUEST",
+    message: "Curated",
+    cause: ErrorWithCode.Factory.Forbidden("raw"),
+  }),
   plainError: new Error("boom"),
 };
 
@@ -26,6 +31,7 @@ const testRouter = router({
   badRequest: throwing(errors.badRequest),
   domainCode: throwing(errors.domainCode),
   trpcError: throwing(errors.trpcError),
+  curatedTrpcError: throwing(errors.curatedTrpcError),
   plainError: throwing(errors.plainError),
 });
 const caller = createCallerFactory(testRouter)({} as unknown as TRPCContextInner);
@@ -46,6 +52,14 @@ describe("errorConversionMiddleware", () => {
 
   it("passes a thrown TRPCError through unchanged", async () => {
     await expect(caller.trpcError()).rejects.toBe(errors.trpcError);
+  });
+
+  // Handlers such as oAuth/generateAuthCode wrap an ErrorWithCode in their own TRPCError to set the message.
+  it("keeps a handler's TRPCError whose cause is an ErrorWithCode", async () => {
+    const error = await caller.curatedTrpcError().catch((e: unknown) => e);
+
+    expect(error).toBe(errors.curatedTrpcError);
+    expect(error).toMatchObject({ code: "BAD_REQUEST", message: "Curated" });
   });
 
   it("leaves other errors to tRPC's default INTERNAL_SERVER_ERROR", async () => {
