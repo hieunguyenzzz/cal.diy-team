@@ -3,11 +3,12 @@ import { z } from "zod";
 
 // Strict objects: TeamService spreads the profile into the update, so parentId or isOrganization must never
 // get through.
+const teamId = z.number().int().positive();
 const name = z.string().trim().min(1).max(100);
 const slug = z.string().max(100);
 const bio = z.string().max(1000);
 
-export const ZTeamIdInputSchema = z.object({ teamId: z.number().int() }).strict();
+export const ZTeamIdInputSchema = z.object({ teamId }).strict();
 
 export const ZCreateTeamInputSchema = z
   .object({
@@ -20,7 +21,7 @@ export const ZCreateTeamInputSchema = z
 
 export const ZUpdateTeamInputSchema = z
   .object({
-    teamId: z.number().int(),
+    teamId,
     name: name.optional(),
     slug: slug.optional(),
     bio: bio.nullable().optional(),

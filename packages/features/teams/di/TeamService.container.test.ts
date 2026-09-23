@@ -1,8 +1,8 @@
 import { createContainer } from "@calcom/features/di/di";
 import { TeamService } from "@calcom/features/teams/services/TeamService";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { moduleLoader as teamLogoUploaderModuleLoader } from "./TeamLogoUploader.module";
 import { getTeamService } from "./TeamService.container";
-import { teamLogoUploaderModuleLoader } from "./TeamService.module";
 import { TEAM_DI_TOKENS } from "./tokens";
 
 const { uploadLogo, resizeBase64Image } = vi.hoisted(() => ({

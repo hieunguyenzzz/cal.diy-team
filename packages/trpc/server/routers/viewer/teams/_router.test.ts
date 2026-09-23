@@ -99,6 +99,13 @@ describe("viewer.teams router", () => {
       await expectCode(caller.get({ teamId: 10 }), "FORBIDDEN");
     });
 
+    it.each([0, -1, 1.5])("rejects teamId %s before reaching the service", async (teamId) => {
+      signInAs(UserPermissionRole.ADMIN);
+
+      await expectCode(caller.get({ teamId }), "BAD_REQUEST");
+      expect(teamRepository.findStandaloneById).not.toHaveBeenCalled();
+    });
+
     it("maps a missing team to NOT_FOUND", async () => {
       signInAs(UserPermissionRole.ADMIN);
       teamRepository.findStandaloneById.mockResolvedValue(null);
