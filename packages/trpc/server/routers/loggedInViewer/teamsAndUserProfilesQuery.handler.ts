@@ -1,19 +1,17 @@
+import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/services/TeamPermissionService";
 import { getPlaceholderAvatar } from "@calcom/lib/defaultAvatarImage";
 import { getUserAvatarUrl } from "@calcom/lib/getAvatarUrl";
 import type { PrismaClient } from "@calcom/prisma";
-import { MembershipRole } from "@calcom/prisma/enums";
+import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 import { teamMetadataSchema } from "@calcom/prisma/zod-utils";
 import type { TrpcSessionUser } from "@calcom/trpc/server/types";
 import { TRPCError } from "@trpc/server";
 import type { TTeamsAndUserProfilesQueryInputSchema } from "./teamsAndUserProfilesQuery.schema";
 
-type PermissionString = string;
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
+// Roles per permission are fixed on the server; the client-supplied fallbackRoles are never trusted.
+const PERMISSION_TEAM_ROLES = new Map<string, readonly MembershipRole[]>([
+  ["webhook.create", TEAM_ADMIN_ROLES],
+]);
 
 type TeamsAndUserProfileOptions = {
   ctx: {
@@ -101,26 +99,11 @@ export const teamsAndUserProfilesQuery = async ({ ctx, input }: TeamsAndUserProf
       }));
   }
 
-  // Filter teams based on permission if provided
-  let hasPermissionForFiltered: boolean[] = [];
+  // Filter teams based on permission if provided; unknown permissions keep no teams.
   if (input?.withPermission) {
-    const permissionService = new PermissionCheckService();
-    const { permission, fallbackRoles } = input.withPermission;
-
-    const permissionChecks = await Promise.all(
-      teamsData.map((membership) =>
-        permissionService.checkPermission({
-          userId: ctx.user.id,
-          teamId: membership.team.id,
-          permission: permission as PermissionString,
-          fallbackRoles: fallbackRoles ? (fallbackRoles as MembershipRole[]) : [],
-        })
-      )
-    );
-
-    // Store permission results for teams that passed the filter
-    hasPermissionForFiltered = permissionChecks.filter((hasPermission) => hasPermission);
-    teamsData = teamsData.filter((_, index) => permissionChecks[index]);
+    const allowedRoles = PERMISSION_TEAM_ROLES.get(input.withPermission.permission) ?? [];
+    const isInstanceAdmin = ctx.user.role === UserPermissionRole.ADMIN;
+    teamsData = teamsData.filter((membership) => isInstanceAdmin || allowedRoles.includes(membership.role));
   }
 
   // Sort teams so organizations come first, followed by other teams
@@ -142,7 +125,7 @@ export const teamsAndUserProfilesQuery = async ({ ctx, input }: TeamsAndUserProf
       }),
       readOnly: false,
     },
-    ...teamsData.map((membership, index) => ({
+    ...teamsData.map((membership) => ({
       teamId: membership.team.id,
       name: membership.team.name,
       slug: membership.team.slug ? `team/${membership.team.slug}` : null,
@@ -150,9 +133,7 @@ export const teamsAndUserProfilesQuery = async ({ ctx, input }: TeamsAndUserProf
         ? getPlaceholderAvatar(membership.team.parent.logoUrl, membership.team.parent.name)
         : getPlaceholderAvatar(membership.team.logoUrl, membership.team.name),
       role: membership.role,
-      readOnly: input?.withPermission
-        ? !hasPermissionForFiltered[index]
-        : !rolesWithWriteAccess.includes(membership.role),
+      readOnly: input?.withPermission ? false : !rolesWithWriteAccess.includes(membership.role),
     })),
   ];
 };
