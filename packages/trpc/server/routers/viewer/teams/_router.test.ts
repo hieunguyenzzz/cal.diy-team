@@ -330,6 +330,35 @@ describe("viewer.teams router", () => {
     });
   });
 
+  describe("member ids", () => {
+    it.each([
+      [
+        "addMember with teamId 0",
+        () => caller.addMember({ teamId: 0, email: "a@example.com", role: MembershipRole.MEMBER }),
+      ],
+      ["removeMember with userId 0", () => caller.removeMember({ teamId: 10, userId: 0 })],
+      ["removeMember with a negative teamId", () => caller.removeMember({ teamId: -1, userId: 5 })],
+      [
+        "changeMemberRole with userId 0",
+        () => caller.changeMemberRole({ teamId: 10, userId: 0, role: MembershipRole.ADMIN }),
+      ],
+      [
+        "changeMemberRole with extra keys",
+        () =>
+          caller.changeMemberRole({ teamId: 10, userId: 5, role: MembershipRole.ADMIN, accepted: true } as {
+            teamId: number;
+            userId: number;
+            role: MembershipRole;
+          }),
+      ],
+    ])("rejects %s", async (_label, call) => {
+      signInAs(UserPermissionRole.ADMIN);
+
+      await expectCode(call(), "BAD_REQUEST");
+      expect(membershipRepository.findRoleAndAcceptedByUserIdAndTeamId).not.toHaveBeenCalled();
+    });
+  });
+
   describe("removeMember", () => {
     it("lets a team admin remove a member", async () => {
       signInWithTeam(UserPermissionRole.USER, { 2: MembershipRole.ADMIN, 5: MembershipRole.MEMBER });

@@ -5,6 +5,7 @@ import { z } from "zod";
 // Strict objects: TeamService spreads the profile into the update, so parentId or isOrganization must never
 // get through.
 const teamId = z.number().int().positive();
+const userId = z.number().int().positive();
 const name = z.string().trim().min(1).max(100);
 const slug = z.string().max(100);
 const bio = z.string().max(1000);
@@ -34,23 +35,17 @@ export const ZUpdateTeamInputSchema = z
 
 export const ZAddMemberInputSchema = z
   .object({
-    teamId: z.number().int(),
+    teamId,
     email: z.string().trim().email(),
     role: z.nativeEnum(MembershipRole),
   })
   .strict();
 
-export const ZTeamMemberInputSchema = z
-  .object({ teamId: z.number().int(), userId: z.number().int() })
-  .strict();
+export const ZTeamMemberInputSchema = z.object({ teamId, userId }).strict();
 
-export const ZChangeMemberRoleInputSchema = z
-  .object({
-    teamId: z.number().int(),
-    userId: z.number().int(),
-    role: z.nativeEnum(MembershipRole),
-  })
-  .strict();
+export const ZChangeMemberRoleInputSchema = ZTeamMemberInputSchema.extend({
+  role: z.nativeEnum(MembershipRole),
+}).strict();
 
 export type TTeamIdInputSchema = z.infer<typeof ZTeamIdInputSchema>;
 export type TCreateTeamInputSchema = z.infer<typeof ZCreateTeamInputSchema>;

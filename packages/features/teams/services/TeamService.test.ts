@@ -343,6 +343,24 @@ describe("TeamService", () => {
       await expect(service.listMembers(instanceAdmin, 10)).resolves.toEqual(withEmails);
     });
 
+    it("looks up the caller's membership once", async () => {
+      givenMemberships({ 2: { role: MembershipRole.ADMIN } });
+
+      await service.listMembers(actor, 10);
+
+      expect(membershipRepository.findRoleAndAcceptedByUserIdAndTeamId).toHaveBeenCalledTimes(1);
+      expect(membershipRepository.findRoleAndAcceptedByUserIdAndTeamId).toHaveBeenCalledWith({
+        userId: 2,
+        teamId: 10,
+      });
+    });
+
+    it("needs no membership lookup for the instance admin", async () => {
+      await service.listMembers(instanceAdmin, 10);
+
+      expect(membershipRepository.findRoleAndAcceptedByUserIdAndTeamId).not.toHaveBeenCalled();
+    });
+
     it("refuses non-members and pending invitees", async () => {
       await expectError(service.listMembers(actor, 10), ErrorCode.Forbidden);
 

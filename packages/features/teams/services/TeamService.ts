@@ -99,16 +99,21 @@ class TeamService {
   }
 
   async listMembers(actor: Actor, teamId: number) {
-    await this.assertTeamRole(actor, teamId, ALL_ROLES, "Only team members can view the member list");
+    const isInstanceAdmin = actor.userRole === UserPermissionRole.ADMIN;
+    // One lookup answers both questions: may the caller see the list, and may they see emails.
+    const own = isInstanceAdmin
+      ? null
+      : await this.deps.membershipRepository.findRoleAndAcceptedByUserIdAndTeamId({
+          userId: actor.userId,
+          teamId,
+        });
+    if (!isInstanceAdmin && !own?.accepted) {
+      throw ErrorWithCode.Factory.Forbidden("Only team members can view the member list");
+    }
     await this.findTeamOrThrow(teamId);
 
     // Emails are contact details: plain members see who is on the team, only admins see how to reach them.
-    const canSeeEmails = await this.deps.teamPermissionService.hasTeamRole({
-      userId: actor.userId,
-      userRole: actor.userRole,
-      teamId,
-      roles: TEAM_ADMIN_ROLES,
-    });
+    const canSeeEmails = isInstanceAdmin || (own !== null && TEAM_ADMIN_ROLES.includes(own.role));
     const memberships = await this.deps.membershipRepository.findByTeamIdIncludeUser({ teamId });
 
     return memberships.map(({ role, accepted, user }) => ({
