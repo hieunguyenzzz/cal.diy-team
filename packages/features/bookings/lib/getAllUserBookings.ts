@@ -3,6 +3,7 @@ import type { Kysely } from "kysely";
 import type { TextFilterValue } from "@calcom/features/data-table/lib/types";
 import type { DB } from "@calcom/kysely";
 import type { PrismaClient } from "@calcom/prisma";
+import type { UserPermissionRole } from "@calcom/prisma/enums";
 import { getBookings } from "@calcom/trpc/server/routers/viewer/bookings/get.handler";
 
 type InputByStatus = "upcoming" | "recurring" | "past" | "cancelled" | "unconfirmed";
@@ -14,7 +15,7 @@ export type SortOptions = {
 };
 type GetOptions = {
   ctx: {
-    user: { id: number; email: string; orgId?: number | null };
+    user: { id: number; email: string; orgId?: number | null; role?: UserPermissionRole };
     prisma: PrismaClient;
     kysely: Kysely<DB>;
   };

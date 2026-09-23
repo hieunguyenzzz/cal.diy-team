@@ -1,6 +1,11 @@
 import dayjs from "@calcom/dayjs";
 import getAllUserBookings from "@calcom/features/bookings/lib/getAllUserBookings";
 import { isTextFilterValue } from "@calcom/features/data-table/lib/utils";
+import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
+import {
+  TEAM_ADMIN_ROLES,
+  TeamPermissionService,
+} from "@calcom/features/teams/services/TeamPermissionService";
 import type { DB } from "@calcom/kysely";
 import kysely from "@calcom/kysely";
 import { parseEventTypeColor } from "@calcom/lib/isEventTypeColor";
@@ -10,20 +15,14 @@ import { safeStringify } from "@calcom/lib/safeStringify";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Booking } from "@calcom/prisma/client";
 import { Prisma } from "@calcom/prisma/client";
-import { BookingStatus, MembershipRole, SchedulingType } from "@calcom/prisma/enums";
+import type { UserPermissionRole } from "@calcom/prisma/enums";
+import { BookingStatus, SchedulingType } from "@calcom/prisma/enums";
 import { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
 import { TRPCError } from "@trpc/server";
 import type { Kysely, SelectQueryBuilder } from "kysely";
 import { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/postgres";
 import type { TrpcSessionUser } from "../../../types";
 import type { TGetInputSchema } from "./get.schema";
-
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
 
 type GetOptions = {
   ctx: {
@@ -60,7 +59,7 @@ export const getHandler = async ({ ctx, input }: GetOptions) => {
 
   const { bookings, recurringInfo, totalCount } = await getAllUserBookings({
     ctx: {
-      user: { id: user.id, email: user.email, orgId: user?.profile?.organizationId },
+      user: { id: user.id, email: user.email, orgId: user?.profile?.organizationId, role: user.role },
       prisma: prisma,
       kysely: kysely,
     },
@@ -100,7 +99,7 @@ export async function getBookings({
   take,
   skip,
 }: {
-  user: { id: number; email: string; orgId?: number | null };
+  user: { id: number; email: string; orgId?: number | null; role?: UserPermissionRole };
   filters: TGetInputSchema["filters"];
   prisma: PrismaClient;
   kysely: Kysely<DB>;
@@ -114,14 +113,13 @@ export async function getBookings({
   take: number;
   skip: number;
 }) {
-  const permissionCheckService = new PermissionCheckService();
-  const fallbackRoles: MembershipRole[] = [MembershipRole.ADMIN, MembershipRole.OWNER];
-
-  const teamIdsWithBookingPermission = await permissionCheckService.getTeamIdsWithPermission({
+  // Team ADMIN/OWNERs can list and filter the bookings of their team's members.
+  const teamIdsWithBookingPermission = await new TeamPermissionService(
+    new MembershipRepository(prisma)
+  ).getTeamIdsWithRole({
     userId: user.id,
-    permission: "booking.read",
-    fallbackRoles,
-    orgId: user.orgId ?? undefined,
+    userRole: user.role,
+    roles: TEAM_ADMIN_ROLES,
   });
 
   // Only fetch user IDs from teams if we need to validate userIds filter
