@@ -7,22 +7,17 @@ const {
   mockEnrichUserWithTheProfile,
   mockFindUnique,
   mockFindMany,
-  mockGetTeamIdsWithPermission,
+  mockMembershipFindMany,
   MockUserRepository,
-  MockPermissionCheckService,
 } = vi.hoisted(() => {
   const mockFindAllProfilesForUserIncludingMovedUser = vi.fn();
   const mockEnrichUserWithTheProfile = vi.fn();
   const mockFindUnique = vi.fn();
   const mockFindMany = vi.fn();
-  const mockGetTeamIdsWithPermission = vi.fn();
+  const mockMembershipFindMany = vi.fn();
 
   class MockUserRepository {
     enrichUserWithTheProfile = (...args: unknown[]) => mockEnrichUserWithTheProfile(...args);
-  }
-
-  class MockPermissionCheckService {
-    getTeamIdsWithPermission = (...args: unknown[]) => mockGetTeamIdsWithPermission(...args);
   }
 
   return {
@@ -30,9 +25,8 @@ const {
     mockEnrichUserWithTheProfile,
     mockFindUnique,
     mockFindMany,
-    mockGetTeamIdsWithPermission,
+    mockMembershipFindMany,
     MockUserRepository,
-    MockPermissionCheckService,
   };
 });
 
@@ -46,10 +40,6 @@ vi.mock("@calcom/features/profile/repositories/ProfileRepository", () => ({
 
 vi.mock("@calcom/features/users/repositories/UserRepository", () => ({
   UserRepository: MockUserRepository,
-}));
-
-vi.mock("@calcom/features/pbac/services/permission-check.service", () => ({
-  PermissionCheckService: MockPermissionCheckService,
 }));
 
 vi.mock("@calcom/lib/getAvatarUrl", () => ({
@@ -66,6 +56,9 @@ vi.mock("@calcom/prisma", () => ({
     },
     user: {
       findUnique: vi.fn(),
+    },
+    membership: {
+      findMany: (...args: unknown[]) => mockMembershipFindMany(...args),
     },
   },
 }));
@@ -124,7 +117,7 @@ describe("getHandler - identity provider email lookup", () => {
       profile: null,
     }));
     mockFindMany.mockResolvedValue([]);
-    mockGetTeamIdsWithPermission.mockResolvedValue([]);
+    mockMembershipFindMany.mockResolvedValue([]);
     mockFindUnique.mockResolvedValue(null);
   });
 
@@ -228,5 +221,25 @@ describe("getHandler - identity provider email lookup", () => {
     const result = await getHandler({ ctx, input: {} });
 
     expect(result.identityProviderEmail).toBe("");
+  });
+
+  it("sets canUpdateTeams when the user is an accepted ADMIN/OWNER of a team", async () => {
+    mockMembershipFindMany.mockResolvedValue([{ teamId: 10 }]);
+
+    const result = await getHandler({ ctx: createCtx(), input: {} });
+
+    expect(result.canUpdateTeams).toBe(true);
+    expect(mockMembershipFindMany).toHaveBeenCalledWith({
+      where: { userId: 1, accepted: true, role: { in: ["ADMIN", "OWNER"] } },
+      select: { teamId: true },
+    });
+  });
+
+  it("leaves canUpdateTeams false when the user administers no team", async () => {
+    mockMembershipFindMany.mockResolvedValue([]);
+
+    const result = await getHandler({ ctx: createCtx(), input: {} });
+
+    expect(result.canUpdateTeams).toBe(false);
   });
 });
