@@ -1,6 +1,13 @@
 import { getTeamService } from "@calcom/features/teams/di/TeamService.container";
 import type { TrpcSessionUser } from "@calcom/trpc/server/types";
-import type { TCreateTeamInputSchema, TTeamIdInputSchema, TUpdateTeamInputSchema } from "./teams.schema";
+import type {
+  TAddMemberInputSchema,
+  TChangeMemberRoleInputSchema,
+  TCreateTeamInputSchema,
+  TTeamIdInputSchema,
+  TTeamMemberInputSchema,
+  TUpdateTeamInputSchema,
+} from "./teams.schema";
 
 type Ctx = { user: NonNullable<TrpcSessionUser> };
 
@@ -24,3 +31,18 @@ export const deleteTeamHandler = ({ ctx, input }: { ctx: Ctx; input: TTeamIdInpu
 
 export const countUpcomingBookingsHandler = ({ ctx, input }: { ctx: Ctx; input: TTeamIdInputSchema }) =>
   getTeamService().countUpcomingBookings(toActor(ctx.user), input.teamId);
+
+export const listMembersHandler = ({ ctx, input }: { ctx: Ctx; input: TTeamIdInputSchema }) =>
+  getTeamService().listMembers(toActor(ctx.user), input.teamId);
+
+export const addMemberHandler = ({ ctx, input }: { ctx: Ctx; input: TAddMemberInputSchema }) =>
+  getTeamService().addMemberByEmail(toActor(ctx.user), input.teamId, {
+    email: input.email,
+    role: input.role,
+  });
+
+export const removeMemberHandler = ({ ctx, input }: { ctx: Ctx; input: TTeamMemberInputSchema }) =>
+  getTeamService().removeMember(toActor(ctx.user), input.teamId, input.userId);
+
+export const changeMemberRoleHandler = ({ ctx, input }: { ctx: Ctx; input: TChangeMemberRoleInputSchema }) =>
+  getTeamService().changeMemberRole(toActor(ctx.user), input.teamId, input.userId, input.role);

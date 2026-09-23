@@ -98,6 +98,35 @@ class TeamService {
     return this.deps.teamRepository.countUpcomingBookings({ teamId, now: new Date() });
   }
 
+  async listMembers(actor: Actor, teamId: number) {
+    const isInstanceAdmin = actor.userRole === UserPermissionRole.ADMIN;
+    // One lookup answers both questions: may the caller see the list, and may they see emails.
+    const own = isInstanceAdmin
+      ? null
+      : await this.deps.membershipRepository.findRoleAndAcceptedByUserIdAndTeamId({
+          userId: actor.userId,
+          teamId,
+        });
+    if (!isInstanceAdmin && !own?.accepted) {
+      throw ErrorWithCode.Factory.Forbidden("Only team members can view the member list");
+    }
+    await this.findTeamOrThrow(teamId);
+
+    // Emails are contact details: plain members see who is on the team, only admins see how to reach them.
+    const canSeeEmails = isInstanceAdmin || (own !== null && TEAM_ADMIN_ROLES.includes(own.role));
+    const memberships = await this.deps.membershipRepository.findByTeamIdIncludeUser({ teamId });
+
+    return memberships.map(({ role, accepted, user }) => ({
+      userId: user.id,
+      name: user.name,
+      username: user.username,
+      email: canSeeEmails ? user.email : null,
+      avatarUrl: user.avatarUrl,
+      role,
+      accepted,
+    }));
+  }
+
   async addMemberByEmail(actor: Actor, teamId: number, input: { email: string; role: MembershipRole }) {
     // Product decision: only instance admins add people to teams; team admins manage existing members.
     this.assertInstanceAdmin(actor, "Only instance admins can add members to a team");
@@ -106,6 +135,11 @@ class TeamService {
     const user = await this.deps.userRepository.findByEmail({ email: input.email });
     if (!user) {
       throw ErrorWithCode.Factory.NotFound(`No user has the email ${input.email}. Create the user first.`);
+    }
+    if (user.locked) {
+      throw ErrorWithCode.Factory.BadRequest(
+        `The user ${input.email} is locked and can't be added to a team`
+      );
     }
     if (
       await this.deps.membershipRepository.findRoleAndAcceptedByUserIdAndTeamId({ userId: user.id, teamId })

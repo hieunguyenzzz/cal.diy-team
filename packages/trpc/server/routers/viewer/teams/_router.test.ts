@@ -20,7 +20,15 @@ const teamRepository = {
   listByMemberUserIdIncludeRole: vi.fn(),
   listStandaloneIncludeMemberCount: vi.fn(),
 };
-const membershipRepository = { findRoleAndAcceptedByUserIdAndTeamId: vi.fn() };
+const membershipRepository = {
+  findRoleAndAcceptedByUserIdAndTeamId: vi.fn(),
+  findByTeamIdIncludeUser: vi.fn(),
+  createAccepted: vi.fn(),
+  updateRole: vi.fn(),
+  deleteByUserIdAndTeamId: vi.fn(),
+  countAcceptedOwners: vi.fn(),
+};
+const userRepository = { findByEmail: vi.fn() };
 const uploadLogo = vi.fn();
 
 // The real service with fake repositories, so each test exercises zod, the permission rules and the
@@ -28,7 +36,7 @@ const uploadLogo = vi.fn();
 const teamService = new TeamService({
   teamRepository: teamRepository as unknown as TeamRepository,
   membershipRepository: membershipRepository as unknown as MembershipRepository,
-  userRepository: { findByEmail: vi.fn() } as unknown as UserRepository,
+  userRepository: userRepository as unknown as UserRepository,
   teamPermissionService: new TeamPermissionService(membershipRepository as unknown as MembershipRepository),
   uploadLogo,
 });
@@ -53,6 +61,14 @@ const signInAs = (role: UserPermissionRole, teamRole?: MembershipRole) => {
   );
 };
 
+// Signed in as user 2; `rows` holds team 10's memberships by userId, including the caller's own.
+const signInWithTeam = (role: UserPermissionRole, rows: Record<number, MembershipRole>) => {
+  session.user = { id: 2, role };
+  membershipRepository.findRoleAndAcceptedByUserIdAndTeamId.mockImplementation(
+    async ({ userId }: { userId: number }) => (rows[userId] ? { role: rows[userId], accepted: true } : null)
+  );
+};
+
 const expectCode = async (promise: Promise<unknown>, code: string) => {
   await expect(promise).rejects.toMatchObject({ code });
 };
@@ -64,6 +80,7 @@ describe("viewer.teams router", () => {
     teamRepository.findIdBySlugAmongTopLevelTeams.mockResolvedValue(null);
     teamRepository.createWithOwner.mockResolvedValue(team);
     teamRepository.update.mockResolvedValue(team);
+    membershipRepository.countAcceptedOwners.mockResolvedValue(2);
     signInAs(UserPermissionRole.USER);
   });
 
@@ -213,6 +230,216 @@ describe("viewer.teams router", () => {
       teamRepository.countUpcomingBookings.mockResolvedValue(7);
 
       await expect(caller.countUpcomingBookings({ teamId: 10 })).resolves.toBe(7);
+    });
+  });
+  describe("listMembers", () => {
+    beforeEach(() => {
+      membershipRepository.findByTeamIdIncludeUser.mockResolvedValue([
+        {
+          role: MembershipRole.OWNER,
+          accepted: true,
+          user: { id: 2, name: "Ann", username: "ann", email: "ann@example.com", avatarUrl: null },
+        },
+      ]);
+    });
+
+    it("hides emails from a plain member", async () => {
+      signInAs(UserPermissionRole.USER, MembershipRole.MEMBER);
+
+      await expect(caller.listMembers({ teamId: 10 })).resolves.toEqual([
+        expect.objectContaining({ userId: 2, name: "Ann", role: MembershipRole.OWNER, email: null }),
+      ]);
+    });
+
+    it.each([
+      ["a team admin", UserPermissionRole.USER, MembershipRole.ADMIN],
+      ["the instance admin", UserPermissionRole.ADMIN, undefined],
+    ])("shows emails to %s", async (_label, userRole, teamRole) => {
+      signInAs(userRole, teamRole);
+
+      await expect(caller.listMembers({ teamId: 10 })).resolves.toEqual([
+        expect.objectContaining({ userId: 2, email: "ann@example.com" }),
+      ]);
+    });
+
+    it("is forbidden to non-members", async () => {
+      await expectCode(caller.listMembers({ teamId: 10 }), "FORBIDDEN");
+    });
+
+    it("rejects extra keys", async () => {
+      await expectCode(
+        caller.listMembers({ teamId: 10, includeEmails: true } as { teamId: number }),
+        "BAD_REQUEST"
+      );
+    });
+  });
+
+  describe("addMember", () => {
+    const input = { teamId: 10, email: "new@example.com", role: MembershipRole.MEMBER };
+
+    beforeEach(() => {
+      userRepository.findByEmail.mockResolvedValue({ id: 5, locked: false });
+    });
+
+    it("is forbidden to a team owner who is not the instance admin", async () => {
+      signInAs(UserPermissionRole.USER, MembershipRole.OWNER);
+
+      await expectCode(caller.addMember(input), "FORBIDDEN");
+      expect(membershipRepository.createAccepted).not.toHaveBeenCalled();
+    });
+
+    it("adds an existing user as an accepted member for the instance admin", async () => {
+      signInAs(UserPermissionRole.ADMIN);
+
+      await caller.addMember({ ...input, role: MembershipRole.ADMIN });
+
+      expect(membershipRepository.createAccepted).toHaveBeenCalledWith({
+        teamId: 10,
+        userId: 5,
+        role: MembershipRole.ADMIN,
+      });
+    });
+
+    it("rejects a locked user with BAD_REQUEST", async () => {
+      signInAs(UserPermissionRole.ADMIN);
+      userRepository.findByEmail.mockResolvedValue({ id: 5, locked: true });
+
+      await expect(caller.addMember(input)).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: expect.stringMatching(/locked/),
+      });
+      expect(membershipRepository.createAccepted).not.toHaveBeenCalled();
+    });
+
+    it("reports an unknown email as NOT_FOUND", async () => {
+      signInAs(UserPermissionRole.ADMIN);
+      userRepository.findByEmail.mockResolvedValue(null);
+
+      await expectCode(caller.addMember(input), "NOT_FOUND");
+    });
+
+    it.each([
+      ["an invalid email", { ...input, email: "not-an-email" }],
+      ["an unknown role", { ...input, role: "SUPERUSER" }],
+      ["extra keys", { ...input, accepted: false }],
+    ])("rejects %s", async (_label, badInput) => {
+      signInAs(UserPermissionRole.ADMIN);
+
+      await expectCode(caller.addMember(badInput as typeof input), "BAD_REQUEST");
+      expect(userRepository.findByEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("member ids", () => {
+    it.each([
+      [
+        "addMember with teamId 0",
+        () => caller.addMember({ teamId: 0, email: "a@example.com", role: MembershipRole.MEMBER }),
+      ],
+      ["removeMember with userId 0", () => caller.removeMember({ teamId: 10, userId: 0 })],
+      ["removeMember with a negative teamId", () => caller.removeMember({ teamId: -1, userId: 5 })],
+      [
+        "changeMemberRole with userId 0",
+        () => caller.changeMemberRole({ teamId: 10, userId: 0, role: MembershipRole.ADMIN }),
+      ],
+      [
+        "changeMemberRole with extra keys",
+        () =>
+          caller.changeMemberRole({ teamId: 10, userId: 5, role: MembershipRole.ADMIN, accepted: true } as {
+            teamId: number;
+            userId: number;
+            role: MembershipRole;
+          }),
+      ],
+    ])("rejects %s", async (_label, call) => {
+      signInAs(UserPermissionRole.ADMIN);
+
+      await expectCode(call(), "BAD_REQUEST");
+      expect(membershipRepository.findRoleAndAcceptedByUserIdAndTeamId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("removeMember", () => {
+    it("lets a team admin remove a member", async () => {
+      signInWithTeam(UserPermissionRole.USER, { 2: MembershipRole.ADMIN, 5: MembershipRole.MEMBER });
+
+      await caller.removeMember({ teamId: 10, userId: 5 });
+
+      expect(membershipRepository.deleteByUserIdAndTeamId).toHaveBeenCalledWith({ teamId: 10, userId: 5 });
+    });
+
+    it("is forbidden to a plain member removing someone else", async () => {
+      signInWithTeam(UserPermissionRole.USER, { 2: MembershipRole.MEMBER, 5: MembershipRole.MEMBER });
+
+      await expectCode(caller.removeMember({ teamId: 10, userId: 5 }), "FORBIDDEN");
+      expect(membershipRepository.deleteByUserIdAndTeamId).not.toHaveBeenCalled();
+    });
+
+    it("surfaces the last-owner guard as BAD_REQUEST", async () => {
+      signInWithTeam(UserPermissionRole.USER, { 2: MembershipRole.OWNER });
+      membershipRepository.countAcceptedOwners.mockResolvedValue(1);
+
+      await expect(caller.removeMember({ teamId: 10, userId: 2 })).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: expect.stringMatching(/last owner/),
+      });
+      expect(membershipRepository.deleteByUserIdAndTeamId).not.toHaveBeenCalled();
+    });
+
+    it("rejects extra keys", async () => {
+      signInAs(UserPermissionRole.ADMIN);
+
+      await expectCode(
+        caller.removeMember({ teamId: 10, userId: 5, force: true } as { teamId: number; userId: number }),
+        "BAD_REQUEST"
+      );
+    });
+  });
+
+  describe("changeMemberRole", () => {
+    it("lets a team admin promote a member to admin", async () => {
+      signInWithTeam(UserPermissionRole.USER, { 2: MembershipRole.ADMIN, 5: MembershipRole.MEMBER });
+
+      await caller.changeMemberRole({ teamId: 10, userId: 5, role: MembershipRole.ADMIN });
+
+      expect(membershipRepository.updateRole).toHaveBeenCalledWith({
+        teamId: 10,
+        userId: 5,
+        role: MembershipRole.ADMIN,
+      });
+    });
+
+    it("is forbidden to a plain member", async () => {
+      signInWithTeam(UserPermissionRole.USER, { 2: MembershipRole.MEMBER, 5: MembershipRole.MEMBER });
+
+      await expectCode(
+        caller.changeMemberRole({ teamId: 10, userId: 5, role: MembershipRole.ADMIN }),
+        "FORBIDDEN"
+      );
+    });
+
+    it("surfaces the last-owner guard as BAD_REQUEST", async () => {
+      signInWithTeam(UserPermissionRole.USER, { 2: MembershipRole.OWNER });
+      membershipRepository.countAcceptedOwners.mockResolvedValue(1);
+
+      await expect(
+        caller.changeMemberRole({ teamId: 10, userId: 2, role: MembershipRole.ADMIN })
+      ).rejects.toMatchObject({ code: "BAD_REQUEST", message: expect.stringMatching(/last owner/) });
+      expect(membershipRepository.updateRole).not.toHaveBeenCalled();
+    });
+
+    it("rejects a role outside MembershipRole", async () => {
+      signInAs(UserPermissionRole.ADMIN);
+
+      await expectCode(
+        caller.changeMemberRole({ teamId: 10, userId: 5, role: "SUPERUSER" } as unknown as {
+          teamId: number;
+          userId: number;
+          role: MembershipRole;
+        }),
+        "BAD_REQUEST"
+      );
+      expect(membershipRepository.updateRole).not.toHaveBeenCalled();
     });
   });
 });
