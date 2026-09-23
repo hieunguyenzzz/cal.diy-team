@@ -1,4 +1,4 @@
-import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/services/TeamPermissionService";
+import { rolesForTeamPermission } from "@calcom/features/teams/services/TeamPermissionService";
 import { getPlaceholderAvatar } from "@calcom/lib/defaultAvatarImage";
 import { getUserAvatarUrl } from "@calcom/lib/getAvatarUrl";
 import type { PrismaClient } from "@calcom/prisma";
@@ -8,10 +8,6 @@ import type { TrpcSessionUser } from "@calcom/trpc/server/types";
 import { TRPCError } from "@trpc/server";
 import type { TTeamsAndUserProfilesQueryInputSchema } from "./teamsAndUserProfilesQuery.schema";
 
-// Roles per permission are fixed on the server; the client-supplied fallbackRoles are never trusted.
-const PERMISSION_TEAM_ROLES = new Map<string, readonly MembershipRole[]>([
-  ["webhook.create", TEAM_ADMIN_ROLES],
-]);
 
 type TeamsAndUserProfileOptions = {
   ctx: {
@@ -101,7 +97,7 @@ export const teamsAndUserProfilesQuery = async ({ ctx, input }: TeamsAndUserProf
 
   // Filter teams based on permission if provided; unknown permissions keep no teams.
   if (input?.withPermission) {
-    const allowedRoles = PERMISSION_TEAM_ROLES.get(input.withPermission.permission) ?? [];
+    const allowedRoles = rolesForTeamPermission(input.withPermission.permission);
     const isInstanceAdmin = ctx.user.role === UserPermissionRole.ADMIN;
     teamsData = teamsData.filter((membership) => isInstanceAdmin || allowedRoles.includes(membership.role));
   }

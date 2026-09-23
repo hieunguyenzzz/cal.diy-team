@@ -55,19 +55,15 @@ describe("teamsAndUserProfilesQuery withPermission", () => {
     } as unknown as Result<typeof prismaMock.user.findUnique>);
   });
 
-  it("lists only ADMIN/OWNER teams for webhook.create, ignoring client-supplied fallbackRoles", async () => {
-    const result = await run({
-      withPermission: { permission: "webhook.create", fallbackRoles: [MembershipRole.MEMBER] },
-    });
+  it("lists only ADMIN/OWNER teams for webhook.create", async () => {
+    const result = await run({ withPermission: { permission: "webhook.create" } });
 
     expect(teamIds(result)).toEqual([20, 30]);
     expect(result.every((profile) => profile.readOnly === false)).toBe(true);
   });
 
-  it("lists no teams for an unknown permission, whatever fallbackRoles the client sends", async () => {
-    const result = await run({
-      withPermission: { permission: "team.delete", fallbackRoles: [MembershipRole.MEMBER] },
-    });
+  it("lists no teams for an unknown permission", async () => {
+    const result = await run({ withPermission: { permission: "team.delete" } });
 
     expect(teamIds(result)).toEqual([]);
   });

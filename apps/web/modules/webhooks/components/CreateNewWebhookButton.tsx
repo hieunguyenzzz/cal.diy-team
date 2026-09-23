@@ -1,7 +1,6 @@
 "use client";
 
 import { useLocale } from "@calcom/lib/hooks/useLocale";
-import { MembershipRole } from "@calcom/prisma/enums";
 import { trpc } from "@calcom/trpc/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@coss/ui/components/avatar";
 import { Button } from "@coss/ui/components/button";
@@ -26,7 +25,6 @@ export const CreateNewWebhookButton = ({ isEmptyState }: { isEmptyState?: boolea
     includeOrg: true,
     withPermission: {
       permission: "webhook.create",
-      fallbackRoles: [MembershipRole.ADMIN, MembershipRole.OWNER],
     },
   });
 
