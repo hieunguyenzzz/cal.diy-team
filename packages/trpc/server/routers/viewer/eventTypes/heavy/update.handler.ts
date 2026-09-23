@@ -2,6 +2,7 @@ import type { appDataSchemas } from "@calcom/app-store/apps.schemas.generated";
 import { DailyLocationType } from "@calcom/app-store/constants";
 import { eventTypeAppMetadataOptionalSchema } from "@calcom/app-store/zod-utils";
 import { CalVideoSettingsRepository } from "@calcom/features/calVideoSettings/repositories/CalVideoSettingsRepository";
+import { CredentialRepository } from "@calcom/features/credentials/repositories/CredentialRepository";
 import { HashedLinkRepository } from "@calcom/features/hashedLink/lib/repository/HashedLinkRepository";
 import { HashedLinkService } from "@calcom/features/hashedLink/lib/service/HashedLinkService";
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
@@ -471,6 +472,40 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
       throw new TRPCError({
         code: "FORBIDDEN",
       });
+    }
+
+    // A host may only be given their own schedule, and a location credential of their own or the team's.
+    const hostScheduleIds = hosts.flatMap((host) => (host.scheduleId ? [host.scheduleId] : []));
+    if (hostScheduleIds.length > 0) {
+      const schedules = await scheduleRepo.findOwnersByIds({ ids: hostScheduleIds });
+      const scheduleOwners = new Map(schedules.map((schedule) => [schedule.id, schedule.userId]));
+      const hasForeignSchedule = hosts.some(
+        (host) => host.scheduleId && scheduleOwners.get(host.scheduleId) !== host.userId
+      );
+      if (hasForeignSchedule) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "A host schedule must belong to that host" });
+      }
+    }
+
+    const hostCredentialIds = hosts.flatMap((host) =>
+      host.location?.credentialId ? [host.location.credentialId] : []
+    );
+    if (hostCredentialIds.length > 0) {
+      const credentialRepo = new CredentialRepository(ctx.prisma);
+      const credentials = await credentialRepo.findOwnersByIds({ ids: hostCredentialIds });
+      const credentialOwners = new Map(credentials.map((credential) => [credential.id, credential]));
+      const hasForeignCredential = hosts.some((host) => {
+        const credentialId = host.location?.credentialId;
+        if (!credentialId) return false;
+        const owner = credentialOwners.get(credentialId);
+        return !owner || (owner.userId !== host.userId && owner.teamId !== teamId);
+      });
+      if (hasForeignCredential) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "A host location credential must belong to that host or the team",
+        });
+      }
     }
 
     const oldHostsSet = new Set(eventType.hosts.map((oldHost) => oldHost.userId));
