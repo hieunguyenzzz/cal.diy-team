@@ -1,5 +1,4 @@
 import prismaMock from "@calcom/testing/lib/__mocks__/prismaMock";
-
 import type { PrismaClient } from "@calcom/prisma";
 import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 import { beforeEach, describe, expect, it, vi } from "vitest";
