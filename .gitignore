@@ -117,3 +117,6 @@ agents/devin-knowledge.json
 
 # pagefind
 _pagefind/
+
+# Real team seed configs (see scripts/seed-team.example.json)
+scripts/*.local.json
