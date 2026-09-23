@@ -41,12 +41,12 @@ export function roleAllowsTeamEventTypeAction(role: MembershipRole, action: Team
 export class TeamPermissionService {
   constructor(private readonly membershipRepository: MembershipRepository) {}
 
-  async canPerformTeamEventTypeAction({
+  async hasTeamRole({
     userId,
     userRole,
     teamId,
-    action,
-  }: TeamPermissionCheck & { action: TeamEventTypeAction }): Promise<boolean> {
+    roles,
+  }: TeamPermissionCheck & { roles: readonly MembershipRole[] }): Promise<boolean> {
     if (userRole === UserPermissionRole.ADMIN) return true;
 
     const membership = await this.membershipRepository.findRoleAndAcceptedByUserIdAndTeamId({
@@ -55,7 +55,14 @@ export class TeamPermissionService {
     });
     if (!membership?.accepted) return false;
 
-    return roleAllowsTeamEventTypeAction(membership.role, action);
+    return roles.includes(membership.role);
+  }
+
+  async canPerformTeamEventTypeAction({
+    action,
+    ...check
+  }: TeamPermissionCheck & { action: TeamEventTypeAction }): Promise<boolean> {
+    return this.hasTeamRole({ ...check, roles: EVENT_TYPE_ACTION_ROLES[action] });
   }
 
   async hasEventTypePermission({

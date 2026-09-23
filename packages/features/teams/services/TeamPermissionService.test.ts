@@ -189,4 +189,47 @@ describe("TeamPermissionService", () => {
       expect(mockFindRoleAndAcceptedByUserIdAndTeamId).not.toHaveBeenCalled();
     });
   });
+
+  describe("hasTeamRole", () => {
+    const adminRoles = [MembershipRole.ADMIN, MembershipRole.OWNER];
+
+    it.each([
+      { role: MembershipRole.MEMBER, allowed: false },
+      { role: MembershipRole.ADMIN, allowed: true },
+      { role: MembershipRole.OWNER, allowed: true },
+    ])("accepted $role -> $allowed for ADMIN/OWNER", async ({ role, allowed }) => {
+      mockFindRoleAndAcceptedByUserIdAndTeamId.mockResolvedValue({ role, accepted: true });
+
+      await expect(
+        service.hasTeamRole({ userId: 1, userRole: UserPermissionRole.USER, teamId: 10, roles: adminRoles })
+      ).resolves.toBe(allowed);
+      expect(mockFindRoleAndAcceptedByUserIdAndTeamId).toHaveBeenCalledWith({ userId: 1, teamId: 10 });
+    });
+
+    it("denies a non-member", async () => {
+      mockFindRoleAndAcceptedByUserIdAndTeamId.mockResolvedValue(null);
+
+      await expect(
+        service.hasTeamRole({ userId: 1, userRole: UserPermissionRole.USER, teamId: 10, roles: adminRoles })
+      ).resolves.toBe(false);
+    });
+
+    it("denies an un-accepted OWNER", async () => {
+      mockFindRoleAndAcceptedByUserIdAndTeamId.mockResolvedValue({
+        role: MembershipRole.OWNER,
+        accepted: false,
+      });
+
+      await expect(
+        service.hasTeamRole({ userId: 1, userRole: UserPermissionRole.USER, teamId: 10, roles: adminRoles })
+      ).resolves.toBe(false);
+    });
+
+    it("lets the instance admin pass without a membership lookup", async () => {
+      await expect(
+        service.hasTeamRole({ userId: 1, userRole: UserPermissionRole.ADMIN, teamId: 10, roles: adminRoles })
+      ).resolves.toBe(true);
+      expect(mockFindRoleAndAcceptedByUserIdAndTeamId).not.toHaveBeenCalled();
+    });
+  });
 });
