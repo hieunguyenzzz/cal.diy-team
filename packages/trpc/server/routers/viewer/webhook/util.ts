@@ -43,11 +43,17 @@ export const createWebhookProcedure = () => {
           userId: true,
           eventTypeId: true,
           teamId: true,
+          platform: true,
         },
       });
 
       if (!webhook) {
         throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      // Same rule as edit.handler, applied here so get and testTrigger are covered too.
+      if (webhook.platform && ctx.user.role !== "ADMIN") {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
       if (eventTypeId && eventTypeId !== webhook.eventTypeId) {

@@ -31,8 +31,9 @@ const givenWebhook = (webhook: {
   userId: number | null;
   eventTypeId: number | null;
   teamId: number | null;
+  platform?: boolean;
 }) => {
-  prismaMock.webhook.findUnique.mockResolvedValue({ id: "wh-1", ...webhook } as Result<
+  prismaMock.webhook.findUnique.mockResolvedValue({ id: "wh-1", platform: false, ...webhook } as Result<
     typeof prismaMock.webhook.findUnique
   >);
 };
@@ -100,6 +101,22 @@ describe("webhookProcedure", () => {
       givenWebhook({ userId: 1, eventTypeId: null, teamId: null });
 
       await expect(runProcedure({ id: "wh-1", teamId: 20 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    });
+  });
+
+  describe("platform webhooks (get, testTrigger and the rest by id)", () => {
+    beforeEach(() => {
+      givenWebhook({ userId: null, eventTypeId: null, teamId: null, platform: true });
+    });
+
+    it("rejects a non-admin, as edit.handler does", async () => {
+      await expect(runProcedure({ id: "wh-1" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it("allows the instance admin", async () => {
+      await runProcedure({ id: "wh-1" }, UserPermissionRole.ADMIN);
+      expect(mockNext).toHaveBeenCalledTimes(1);
     });
   });
 
