@@ -52,9 +52,6 @@ export const createHandler = async ({ ctx, input }: CreateOptions) => {
   const isManagedEventType = schedulingType === SchedulingType.MANAGED;
   const isOrgAdmin = !!ctx.user?.organization?.isOrgAdmin;
 
-  // Standalone teams only: there is no org-level role check beyond the session's org-admin flag.
-  const hasOrgEventTypeCreatePermission = isOrgAdmin;
-
   const locations: EventTypeLocation[] =
     inputLocations && inputLocations.length !== 0 ? inputLocations : await getDefaultLocations(ctx.user);
 
@@ -94,7 +91,8 @@ export const createHandler = async ({ ctx, input }: CreateOptions) => {
       action: "create",
     });
 
-    if (!hasOrgEventTypeCreatePermission && !hasCreatePermission) {
+    // No org-admin shortcut: this fork has standalone teams only, so team membership alone decides.
+    if (!hasCreatePermission) {
       console.warn(`User ${userId} does not have eventType.create permission for team ${teamId}`);
       // UNAUTHORIZED, not FORBIDDEN: useCreateEventType maps this code to the localised error message.
       throw new TRPCError({ code: "UNAUTHORIZED" });
@@ -110,7 +108,7 @@ export const createHandler = async ({ ctx, input }: CreateOptions) => {
 
   // If we are in an organization & they don't have org-level eventType.create permission & they are not creating an event on a teamID
   // Check if evenTypes are locked.
-  if (ctx.user.organizationId && !hasOrgEventTypeCreatePermission && !teamId) {
+  if (ctx.user.organizationId && !isOrgAdmin && !teamId) {
     const orgSettings = await ctx.prisma.organizationSettings.findUnique({
       where: {
         organizationId: ctx.user.organizationId,

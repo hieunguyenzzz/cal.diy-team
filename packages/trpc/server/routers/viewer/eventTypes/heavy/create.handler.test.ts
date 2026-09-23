@@ -16,12 +16,15 @@ type CreateOptions = Parameters<typeof createHandler>[0];
 
 const mockCreate = vi.fn();
 
-const buildCtx = (role: UserPermissionRole = UserPermissionRole.USER): CreateOptions["ctx"] => ({
+const buildCtx = (
+  role: UserPermissionRole = UserPermissionRole.USER,
+  isOrgAdmin = false
+): CreateOptions["ctx"] => ({
   user: {
     id: 1,
     role,
     organizationId: null,
-    organization: { isOrgAdmin: false },
+    organization: { isOrgAdmin },
     profile: { id: null },
     metadata: {},
     email: "user@example.com",
@@ -85,6 +88,15 @@ describe("createHandler team permissions", () => {
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({ team: { connect: { id: 10 } }, schedulingType: SchedulingType.ROUND_ROBIN })
     );
+  });
+
+  it("does not let the session org-admin flag bypass the team check", async () => {
+    mockMembership(null);
+
+    await expect(
+      createHandler({ ctx: buildCtx(UserPermissionRole.USER, true), input: teamInput })
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it("lets the instance admin create a team event type without membership", async () => {
