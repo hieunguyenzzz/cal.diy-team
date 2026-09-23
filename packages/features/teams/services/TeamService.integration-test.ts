@@ -1,3 +1,4 @@
+import { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import { TeamRepository } from "@calcom/features/teams/repositories/TeamRepository";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
@@ -22,6 +23,7 @@ describe("TeamService (DB)", () => {
     teamRepository: new TeamRepository(prisma),
     membershipRepository,
     userRepository: new UserRepository(prisma),
+    eventTypeRepository: new EventTypeRepository(prisma),
     teamPermissionService: new TeamPermissionService(membershipRepository),
     uploadLogo: async () => "/api/avatar/unused.png",
   });

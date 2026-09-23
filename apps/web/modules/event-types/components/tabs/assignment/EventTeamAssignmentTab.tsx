@@ -90,7 +90,7 @@ const FixedHosts = ({
   }
 
   return (
-    <div className="mt-5 rounded-lg">
+    <div className="mt-5 rounded-lg" data-testid="fixed-hosts">
       <SettingsToggle
         data-testid="fixed-hosts-switch"
         toggleSwitchAtTheEnd={true}

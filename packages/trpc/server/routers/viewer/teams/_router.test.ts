@@ -2,6 +2,7 @@ import type { MembershipRepository } from "@calcom/features/membership/repositor
 import type { TeamRepository } from "@calcom/features/teams/repositories/TeamRepository";
 import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import { TeamService } from "@calcom/features/teams/services/TeamService";
+import type { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import type { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,12 +24,13 @@ const teamRepository = {
 const membershipRepository = {
   findRoleAndAcceptedByUserIdAndTeamId: vi.fn(),
   findByTeamIdIncludeUser: vi.fn(),
-  createAccepted: vi.fn(),
+  createAcceptedWithHosts: vi.fn(),
   updateRole: vi.fn(),
-  deleteByUserIdAndTeamId: vi.fn(),
+  deleteByUserIdAndTeamIdWithHosts: vi.fn(),
   countAcceptedOwners: vi.fn(),
 };
 const userRepository = { findByEmailIncludeLocked: vi.fn() };
+const eventTypeRepository = { findManyByTeamIdWithAssignAllTeamMembers: vi.fn().mockResolvedValue([]) };
 const uploadLogo = vi.fn();
 
 // The real service with fake repositories, so each test exercises zod, the permission rules and the
@@ -37,6 +39,7 @@ const teamService = new TeamService({
   teamRepository: teamRepository as unknown as TeamRepository,
   membershipRepository: membershipRepository as unknown as MembershipRepository,
   userRepository: userRepository as unknown as UserRepository,
+  eventTypeRepository: eventTypeRepository as unknown as EventTypeRepository,
   teamPermissionService: new TeamPermissionService(membershipRepository as unknown as MembershipRepository),
   uploadLogo,
 });
@@ -285,7 +288,7 @@ describe("viewer.teams router", () => {
       signInAs(UserPermissionRole.USER, MembershipRole.OWNER);
 
       await expectCode(caller.addMember(input), "FORBIDDEN");
-      expect(membershipRepository.createAccepted).not.toHaveBeenCalled();
+      expect(membershipRepository.createAcceptedWithHosts).not.toHaveBeenCalled();
     });
 
     it("adds an existing user as an accepted member for the instance admin", async () => {
@@ -293,10 +296,11 @@ describe("viewer.teams router", () => {
 
       await caller.addMember({ ...input, role: MembershipRole.ADMIN });
 
-      expect(membershipRepository.createAccepted).toHaveBeenCalledWith({
+      expect(membershipRepository.createAcceptedWithHosts).toHaveBeenCalledWith({
         teamId: 10,
         userId: 5,
         role: MembershipRole.ADMIN,
+        hosts: [],
       });
     });
 
@@ -308,7 +312,7 @@ describe("viewer.teams router", () => {
         code: "BAD_REQUEST",
         message: expect.stringMatching(/locked/),
       });
-      expect(membershipRepository.createAccepted).not.toHaveBeenCalled();
+      expect(membershipRepository.createAcceptedWithHosts).not.toHaveBeenCalled();
     });
 
     it("reports an unknown email as NOT_FOUND", async () => {
@@ -365,14 +369,17 @@ describe("viewer.teams router", () => {
 
       await caller.removeMember({ teamId: 10, userId: 5 });
 
-      expect(membershipRepository.deleteByUserIdAndTeamId).toHaveBeenCalledWith({ teamId: 10, userId: 5 });
+      expect(membershipRepository.deleteByUserIdAndTeamIdWithHosts).toHaveBeenCalledWith({
+        teamId: 10,
+        userId: 5,
+      });
     });
 
     it("is forbidden to a plain member removing someone else", async () => {
       signInWithTeam(UserPermissionRole.USER, { 2: MembershipRole.MEMBER, 5: MembershipRole.MEMBER });
 
       await expectCode(caller.removeMember({ teamId: 10, userId: 5 }), "FORBIDDEN");
-      expect(membershipRepository.deleteByUserIdAndTeamId).not.toHaveBeenCalled();
+      expect(membershipRepository.deleteByUserIdAndTeamIdWithHosts).not.toHaveBeenCalled();
     });
 
     it("surfaces the last-owner guard as BAD_REQUEST", async () => {
@@ -383,7 +390,7 @@ describe("viewer.teams router", () => {
         code: "BAD_REQUEST",
         message: expect.stringMatching(/last owner/),
       });
-      expect(membershipRepository.deleteByUserIdAndTeamId).not.toHaveBeenCalled();
+      expect(membershipRepository.deleteByUserIdAndTeamIdWithHosts).not.toHaveBeenCalled();
     });
 
     it("rejects extra keys", async () => {

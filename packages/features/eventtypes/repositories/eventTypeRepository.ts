@@ -81,6 +81,13 @@ function usersWithSelectedCalendars<
 export class EventTypeRepository implements IEventTypesRepository {
   constructor(private prismaClient: PrismaClient) {}
 
+  async findManyByTeamIdWithAssignAllTeamMembers({ teamId }: { teamId: number }) {
+    return this.prismaClient.eventType.findMany({
+      where: { teamId, assignAllTeamMembers: true },
+      select: { id: true, schedulingType: true },
+    });
+  }
+
   async findParentEventTypeId(eventTypeId: number): Promise<number | null> {
     const managedChildEventType = await this.prismaClient.eventType.findFirst({
       where: {

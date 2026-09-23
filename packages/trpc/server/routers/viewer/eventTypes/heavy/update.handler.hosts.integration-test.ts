@@ -1,5 +1,11 @@
+import { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
+import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
+import { TeamRepository } from "@calcom/features/teams/repositories/TeamRepository";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
+import { TeamService } from "@calcom/features/teams/services/TeamService";
+import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import prisma from "@calcom/prisma";
-import { MembershipRole, SchedulingType } from "@calcom/prisma/enums";
+import { MembershipRole, SchedulingType, UserPermissionRole } from "@calcom/prisma/enums";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { updateHandler } from "./update.handler";
 
@@ -131,5 +137,49 @@ describe("updateHandler hosts (DB)", () => {
       })
     ).rejects.toThrow();
     expect((await hostsInDb()).map((host) => host.userId)).not.toContain(outsider.id);
+  });
+
+  // Before host rows followed membership, a removed host stayed in the form's hosts and saving was FORBIDDEN.
+  it("saves the assignment after a host member is removed from the team", async () => {
+    await updateHandler({
+      ctx: asOwner(),
+      input: {
+        id: eventTypeId as number,
+        hosts: [
+          { userId: owner.id, isFixed: true, priority: 2, weight: 100 },
+          { userId: member.id, isFixed: true, priority: 2, weight: 100 },
+        ],
+      },
+    });
+    const membershipRepository = new MembershipRepository(prisma);
+    const teamService = new TeamService({
+      teamRepository: new TeamRepository(prisma),
+      membershipRepository,
+      userRepository: new UserRepository(prisma),
+      eventTypeRepository: new EventTypeRepository(prisma),
+      teamPermissionService: new TeamPermissionService(membershipRepository),
+      uploadLogo: async () => "/api/avatar/unused.png",
+    });
+
+    await teamService.removeMember(
+      { userId: owner.id, userRole: UserPermissionRole.USER },
+      teamId as number,
+      member.id
+    );
+
+    const remainingHosts = await hostsInDb();
+    expect(remainingHosts.map((host) => host.userId)).toEqual([owner.id]);
+    await expect(
+      updateHandler({ ctx: asOwner(), input: { id: eventTypeId as number, hosts: remainingHosts } })
+    ).resolves.toBeDefined();
+    await expect(
+      updateHandler({
+        ctx: asOwner(),
+        input: {
+          id: eventTypeId as number,
+          hosts: [...remainingHosts, { userId: member.id, isFixed: true, priority: 2, weight: 100 }],
+        },
+      })
+    ).rejects.toThrow();
   });
 });

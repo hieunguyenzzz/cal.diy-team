@@ -14,6 +14,9 @@ describe("MembershipRepository team management", () => {
       count: vi.fn(),
       findMany: vi.fn(),
     },
+    host: { createMany: vi.fn(), deleteMany: vi.fn() },
+    // A batch transaction runs the given operations in order; the fake just resolves them.
+    $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
   };
   const repository = new MembershipRepository(prisma as unknown as PrismaClient);
   const byUserAndTeam = { userId_teamId: { userId: 5, teamId: 10 } };
@@ -22,12 +25,26 @@ describe("MembershipRepository team management", () => {
     vi.clearAllMocks();
   });
 
-  it("creates an accepted membership", async () => {
-    await repository.createAccepted({ teamId: 10, userId: 5, role: MembershipRole.ADMIN });
+  it("creates an accepted membership and its hosts in one transaction", async () => {
+    prisma.membership.create.mockResolvedValue({ id: 7, role: MembershipRole.ADMIN, accepted: true });
 
+    await expect(
+      repository.createAcceptedWithHosts({
+        teamId: 10,
+        userId: 5,
+        role: MembershipRole.ADMIN,
+        hosts: [{ eventTypeId: 3, isFixed: true, priority: 2, weight: 100 }],
+      })
+    ).resolves.toEqual({ id: 7, role: MembershipRole.ADMIN, accepted: true });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(prisma.membership.create).toHaveBeenCalledWith({
       data: { teamId: 10, userId: 5, role: MembershipRole.ADMIN, accepted: true },
       select: { id: true, role: true, accepted: true },
+    });
+    expect(prisma.host.createMany).toHaveBeenCalledWith({
+      data: [{ userId: 5, eventTypeId: 3, isFixed: true, priority: 2, weight: 100 }],
+      skipDuplicates: true,
     });
   });
 
@@ -41,9 +58,15 @@ describe("MembershipRepository team management", () => {
     });
   });
 
-  it("deletes by user and team", async () => {
-    await repository.deleteByUserIdAndTeamId({ teamId: 10, userId: 5 });
+  it("deletes the membership and the member's hosts on that team's event types in one transaction", async () => {
+    prisma.membership.delete.mockResolvedValue({ id: 7 });
 
+    await expect(repository.deleteByUserIdAndTeamIdWithHosts({ teamId: 10, userId: 5 })).resolves.toEqual({
+      id: 7,
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.host.deleteMany).toHaveBeenCalledWith({ where: { userId: 5, eventType: { teamId: 10 } } });
     expect(prisma.membership.delete).toHaveBeenCalledWith({ where: byUserAndTeam, select: { id: true } });
   });
 

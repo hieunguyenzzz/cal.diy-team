@@ -388,11 +388,30 @@ export class MembershipRepository {
     });
   }
 
-  async createAccepted({ teamId, userId, role }: { teamId: number; userId: number; role: MembershipRole }) {
-    return this.prismaClient.membership.create({
-      data: { teamId, userId, role, accepted: true },
-      select: { id: true, role: true, accepted: true },
-    });
+  // The membership and the member's hosts are written together so an added member is never left without the
+  // Host rows their team's "add all team members" event types promise.
+  async createAcceptedWithHosts({
+    teamId,
+    userId,
+    role,
+    hosts,
+  }: {
+    teamId: number;
+    userId: number;
+    role: MembershipRole;
+    hosts: { eventTypeId: number; isFixed: boolean; priority: number; weight: number }[];
+  }) {
+    const [membership] = await this.prismaClient.$transaction([
+      this.prismaClient.membership.create({
+        data: { teamId, userId, role, accepted: true },
+        select: { id: true, role: true, accepted: true },
+      }),
+      this.prismaClient.host.createMany({
+        data: hosts.map((host) => ({ userId, ...host })),
+        skipDuplicates: true,
+      }),
+    ]);
+    return membership;
   }
 
   async updateRole({ teamId, userId, role }: { teamId: number; userId: number; role: MembershipRole }) {
@@ -403,11 +422,17 @@ export class MembershipRepository {
     });
   }
 
-  async deleteByUserIdAndTeamId({ teamId, userId }: { teamId: number; userId: number }) {
-    return this.prismaClient.membership.delete({
-      where: { userId_teamId: { userId, teamId } },
-      select: { id: true },
-    });
+  // Host rows don't cascade from the membership, so an ex-member would keep getting bookings and block saving
+  // the assignment; both go in one transaction.
+  async deleteByUserIdAndTeamIdWithHosts({ teamId, userId }: { teamId: number; userId: number }) {
+    const [, membership] = await this.prismaClient.$transaction([
+      this.prismaClient.host.deleteMany({ where: { userId, eventType: { teamId } } }),
+      this.prismaClient.membership.delete({
+        where: { userId_teamId: { userId, teamId } },
+        select: { id: true },
+      }),
+    ]);
+    return membership;
   }
 
   async countAcceptedOwners({ teamId }: { teamId: number }) {

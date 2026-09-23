@@ -1,4 +1,5 @@
 import { bindModuleToClassOnToken, createModule, type ModuleLoader } from "@calcom/features/di/di";
+import { moduleLoader as eventTypeRepositoryModuleLoader } from "@calcom/features/di/modules/EventType";
 import { moduleLoader as userRepositoryModuleLoader } from "@calcom/features/di/modules/User";
 import { TeamService } from "@calcom/features/teams/services/TeamService";
 import { moduleLoader as membershipRepositoryModuleLoader } from "@calcom/features/users/di/MembershipRepository.module";
@@ -20,6 +21,7 @@ const loadModule = bindModuleToClassOnToken({
     teamRepository: teamRepositoryModuleLoader,
     membershipRepository: membershipRepositoryModuleLoader,
     userRepository: userRepositoryModuleLoader,
+    eventTypeRepository: eventTypeRepositoryModuleLoader,
     teamPermissionService: teamPermissionServiceModuleLoader,
     uploadLogo: teamLogoUploaderModuleLoader,
   },

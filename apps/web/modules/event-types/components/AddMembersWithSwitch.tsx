@@ -6,7 +6,8 @@ import { useLocale } from "@calcom/lib/hooks/useLocale";
 import type { Dispatch, SetStateAction } from "react";
 
 // Restored from before the Cal.diy trim and cut down to plain host selection: no segments, platform
-// wrapper or host groups. Priority and weight keep their neutral defaults as the seam for PR 10.
+// wrapper or host groups. Priority is live (the host list's priority button feeds getLuckyUser's round-robin
+// ordering); weights stay at their neutral default because weighting is disabled until it gets its own UI.
 const DEFAULT_PRIORITY = 2;
 const DEFAULT_WEIGHT = 100;
 

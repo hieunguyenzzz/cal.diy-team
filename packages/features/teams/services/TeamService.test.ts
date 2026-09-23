@@ -1,5 +1,6 @@
 import type { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import type { TeamRepository } from "@calcom/features/teams/repositories/TeamRepository";
+import type { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import type { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
@@ -25,19 +26,21 @@ const teamRepository = {
 };
 const membershipRepository = {
   findRoleAndAcceptedByUserIdAndTeamId: vi.fn(),
-  createAccepted: vi.fn(),
+  createAcceptedWithHosts: vi.fn(),
   updateRole: vi.fn(),
-  deleteByUserIdAndTeamId: vi.fn(),
+  deleteByUserIdAndTeamIdWithHosts: vi.fn(),
   countAcceptedOwners: vi.fn(),
   findByTeamIdIncludeUser: vi.fn(),
 };
 const userRepository = { findByEmailIncludeLocked: vi.fn() };
+const eventTypeRepository = { findManyByTeamIdWithAssignAllTeamMembers: vi.fn() };
 const uploadLogo = vi.fn();
 
 const service = new TeamService({
   teamRepository: teamRepository as unknown as TeamRepository,
   membershipRepository: membershipRepository as unknown as MembershipRepository,
   userRepository: userRepository as unknown as UserRepository,
+  eventTypeRepository: eventTypeRepository as unknown as EventTypeRepository,
   teamPermissionService: new TeamPermissionService(membershipRepository as unknown as MembershipRepository),
   uploadLogo,
 });
@@ -68,6 +71,7 @@ describe("TeamService", () => {
     teamRepository.createWithOwner.mockResolvedValue(team);
     teamRepository.update.mockResolvedValue(team);
     membershipRepository.countAcceptedOwners.mockResolvedValue(2);
+    eventTypeRepository.findManyByTeamIdWithAssignAllTeamMembers.mockResolvedValue([]);
     givenMemberships({});
   });
 
@@ -402,6 +406,32 @@ describe("TeamService", () => {
       userRepository.findByEmailIncludeLocked.mockResolvedValue({ id: 5, locked: false });
     });
 
+    // "Add all team members, including future members" lives in Host rows, so a new member must join them.
+    it("makes the new member a host on every assign-all event type of the team", async () => {
+      eventTypeRepository.findManyByTeamIdWithAssignAllTeamMembers.mockResolvedValue([
+        { id: 3, schedulingType: "COLLECTIVE" },
+        { id: 4, schedulingType: "ROUND_ROBIN" },
+      ]);
+
+      await service.addMemberByEmail(instanceAdmin, 10, {
+        email: "new@example.com",
+        role: MembershipRole.MEMBER,
+      });
+
+      expect(eventTypeRepository.findManyByTeamIdWithAssignAllTeamMembers).toHaveBeenCalledWith({
+        teamId: 10,
+      });
+      expect(membershipRepository.createAcceptedWithHosts).toHaveBeenCalledWith({
+        teamId: 10,
+        userId: 5,
+        role: MembershipRole.MEMBER,
+        hosts: [
+          { eventTypeId: 3, isFixed: true, priority: 2, weight: 100 },
+          { eventTypeId: 4, isFixed: false, priority: 2, weight: 100 },
+        ],
+      });
+    });
+
     it("rejects a locked user", async () => {
       userRepository.findByEmailIncludeLocked.mockResolvedValue({ id: 5, locked: true });
 
@@ -413,7 +443,7 @@ describe("TeamService", () => {
         ErrorCode.BadRequest,
         /locked/i
       );
-      expect(membershipRepository.createAccepted).not.toHaveBeenCalled();
+      expect(membershipRepository.createAcceptedWithHosts).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -428,7 +458,7 @@ describe("TeamService", () => {
         ErrorCode.Forbidden
       );
       expect(userRepository.findByEmailIncludeLocked).not.toHaveBeenCalled();
-      expect(membershipRepository.createAccepted).not.toHaveBeenCalled();
+      expect(membershipRepository.createAcceptedWithHosts).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -439,7 +469,12 @@ describe("TeamService", () => {
       await service.addMemberByEmail(instanceAdmin, 10, { email: "New@Example.com", role });
 
       expect(userRepository.findByEmailIncludeLocked).toHaveBeenCalledWith({ email: "New@Example.com" });
-      expect(membershipRepository.createAccepted).toHaveBeenCalledWith({ teamId: 10, userId: 5, role });
+      expect(membershipRepository.createAcceptedWithHosts).toHaveBeenCalledWith({
+        teamId: 10,
+        userId: 5,
+        role,
+        hosts: [],
+      });
     });
 
     it("tells the admin to create the user first for an unknown email", async () => {
@@ -453,7 +488,7 @@ describe("TeamService", () => {
         ErrorCode.NotFound,
         /Create the user first\.$/
       );
-      expect(membershipRepository.createAccepted).not.toHaveBeenCalled();
+      expect(membershipRepository.createAcceptedWithHosts).not.toHaveBeenCalled();
     });
 
     it("rejects a user who is already a member", async () => {
@@ -567,7 +602,10 @@ describe("TeamService", () => {
 
       await service.removeMember(actor, 10, 5);
 
-      expect(membershipRepository.deleteByUserIdAndTeamId).toHaveBeenCalledWith({ teamId: 10, userId: 5 });
+      expect(membershipRepository.deleteByUserIdAndTeamIdWithHosts).toHaveBeenCalledWith({
+        teamId: 10,
+        userId: 5,
+      });
     });
 
     it("lets only an OWNER or the instance admin remove an OWNER", async () => {
@@ -582,7 +620,7 @@ describe("TeamService", () => {
 
       await expectError(service.removeMember(actor, 10, 2), ErrorCode.BadRequest, /last owner/i);
       await expectError(service.removeMember(instanceAdmin, 10, 2), ErrorCode.BadRequest, /last owner/i);
-      expect(membershipRepository.deleteByUserIdAndTeamId).not.toHaveBeenCalled();
+      expect(membershipRepository.deleteByUserIdAndTeamIdWithHosts).not.toHaveBeenCalled();
     });
 
     it("returns NotFound for a user who is not in the team", async () => {
@@ -600,7 +638,7 @@ describe("TeamService", () => {
 
       await expectError(service.removeMember(actor, 10, userId), ErrorCode.NotFound);
       expect(teamRepository.findStandaloneById).toHaveBeenCalledWith({ id: 10 });
-      expect(membershipRepository.deleteByUserIdAndTeamId).not.toHaveBeenCalled();
+      expect(membershipRepository.deleteByUserIdAndTeamIdWithHosts).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -611,7 +649,10 @@ describe("TeamService", () => {
 
       await service.removeMember(actor, 10, 2);
 
-      expect(membershipRepository.deleteByUserIdAndTeamId).toHaveBeenCalledWith({ teamId: 10, userId: 2 });
+      expect(membershipRepository.deleteByUserIdAndTeamIdWithHosts).toHaveBeenCalledWith({
+        teamId: 10,
+        userId: 2,
+      });
     });
 
     it("lets an OWNER leave while another OWNER remains", async () => {
@@ -620,14 +661,17 @@ describe("TeamService", () => {
 
       await service.removeMember(actor, 10, 2);
 
-      expect(membershipRepository.deleteByUserIdAndTeamId).toHaveBeenCalledWith({ teamId: 10, userId: 2 });
+      expect(membershipRepository.deleteByUserIdAndTeamIdWithHosts).toHaveBeenCalledWith({
+        teamId: 10,
+        userId: 2,
+      });
     });
 
     it("does not let a pending invitee remove themselves without admin rights", async () => {
       givenMemberships({ 2: { role: MembershipRole.MEMBER, accepted: false } });
 
       await expectError(service.removeMember(actor, 10, 2), ErrorCode.Forbidden);
-      expect(membershipRepository.deleteByUserIdAndTeamId).not.toHaveBeenCalled();
+      expect(membershipRepository.deleteByUserIdAndTeamIdWithHosts).not.toHaveBeenCalled();
     });
 
     it("does not count a pending OWNER invite as the last owner", async () => {
@@ -639,7 +683,10 @@ describe("TeamService", () => {
 
       await service.removeMember(actor, 10, 5);
 
-      expect(membershipRepository.deleteByUserIdAndTeamId).toHaveBeenCalledWith({ teamId: 10, userId: 5 });
+      expect(membershipRepository.deleteByUserIdAndTeamIdWithHosts).toHaveBeenCalledWith({
+        teamId: 10,
+        userId: 5,
+      });
     });
   });
 });
