@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
-import { SchedulingType } from "@calcom/prisma/enums";
+import { BookingStatus, MembershipRole, SchedulingType } from "@calcom/prisma/enums";
 import { baseEventTypeSelect } from "@calcom/prisma/selects/event-types";
 
 const publicUserSelect = {
@@ -11,11 +11,102 @@ const publicUserSelect = {
 } satisfies Prisma.UserSelect;
 
 // Only standalone teams: Cal.diy has no organizations, so sub-teams and orgs stay unreachable.
-const standaloneTeamWhere = (slug: string) =>
-  ({ slug, parentId: null, isOrganization: false }) satisfies Prisma.TeamWhereInput;
+const STANDALONE_TEAM = { parentId: null, isOrganization: false } satisfies Prisma.TeamWhereInput;
+
+const standaloneTeamWhere = (slug: string) => ({ slug, ...STANDALONE_TEAM }) satisfies Prisma.TeamWhereInput;
+
+const teamProfileSelect = {
+  id: true,
+  name: true,
+  slug: true,
+  bio: true,
+  timeZone: true,
+  logoUrl: true,
+} satisfies Prisma.TeamSelect;
+
+export type TeamProfileUpdate = {
+  name?: string;
+  slug?: string;
+  bio?: string | null;
+  timeZone?: string;
+  logoUrl?: string | null;
+};
 
 export class TeamRepository {
   constructor(private prismaClient: PrismaClient) {}
+
+  async createWithOwner({
+    name,
+    slug,
+    bio,
+    timeZone,
+    ownerUserId,
+  }: {
+    name: string;
+    slug: string;
+    bio?: string | null;
+    timeZone?: string;
+    ownerUserId: number;
+  }) {
+    return this.prismaClient.team.create({
+      data: {
+        name,
+        slug,
+        bio,
+        timeZone,
+        ...STANDALONE_TEAM,
+        members: { create: { userId: ownerUserId, role: MembershipRole.OWNER, accepted: true } },
+      },
+      select: teamProfileSelect,
+    });
+  }
+
+  async update({ id, data }: { id: number; data: TeamProfileUpdate }) {
+    return this.prismaClient.team.update({ where: { id }, data, select: teamProfileSelect });
+  }
+
+  async delete({ id }: { id: number }) {
+    return this.prismaClient.team.delete({ where: { id }, select: { id: true } });
+  }
+
+  // Avatar has no FK to Team, so a team's logo rows would outlive it; userId 0 marks a team logo.
+  async deleteLogos({ teamId }: { teamId: number }) {
+    return this.prismaClient.avatar.deleteMany({ where: { teamId, userId: 0 } });
+  }
+
+  async countUpcomingBookings({ teamId, now }: { teamId: number; now: Date }) {
+    return this.prismaClient.booking.count({
+      where: {
+        status: BookingStatus.ACCEPTED,
+        startTime: { gt: now },
+        eventType: { OR: [{ teamId }, { parent: { teamId } }] },
+      },
+    });
+  }
+
+  async findStandaloneById({ id }: { id: number }) {
+    return this.prismaClient.team.findFirst({ where: { id, ...STANDALONE_TEAM }, select: teamProfileSelect });
+  }
+
+  async findIdBySlugAmongTopLevelTeams({ slug }: { slug: string }) {
+    return this.prismaClient.team.findFirst({ where: { slug, parentId: null }, select: { id: true } });
+  }
+
+  async listByMemberUserIdIncludeRole({ userId }: { userId: number }) {
+    return this.prismaClient.team.findMany({
+      where: { ...STANDALONE_TEAM, members: { some: { userId, accepted: true } } },
+      orderBy: { name: "asc" },
+      select: { ...teamProfileSelect, members: { where: { userId }, select: { role: true } } },
+    });
+  }
+
+  async listStandaloneIncludeMemberCount() {
+    return this.prismaClient.team.findMany({
+      where: STANDALONE_TEAM,
+      orderBy: { name: "asc" },
+      select: { ...teamProfileSelect, _count: { select: { members: true } } },
+    });
+  }
 
   async findBySlugIncludeEventTypesAndMembers({ slug }: { slug: string }) {
     // (slug, parentId) is unique, but Postgres treats NULL parentIds as distinct, so pin the order
