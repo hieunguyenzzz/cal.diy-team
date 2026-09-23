@@ -47,6 +47,7 @@ import {
 } from "@calcom/web/modules/event-types/components/CreateEventTypeDialog";
 import { DuplicateDialog } from "@calcom/web/modules/event-types/components/DuplicateDialog";
 import { InfiniteSkeletonLoader } from "@calcom/web/modules/event-types/components/SkeletonLoader";
+import { canDeleteEventTypesInGroup } from "@calcom/web/modules/event-types/lib/canDeleteEventTypesInGroup";
 import { SearchIcon } from "@coss/ui/icons";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { TRPCClientError } from "@trpc/client";
@@ -91,6 +92,7 @@ const useSearchContext = (): SearchContextType => {
 interface InfiniteEventTypeListProps {
   group: InfiniteEventTypeGroup;
   readOnly: boolean;
+  canDelete?: boolean;
   bookerUrl: string | null;
   pages:
     | {
@@ -105,6 +107,7 @@ interface InfiniteEventTypeListProps {
 
 interface InfiniteTeamsTabProps {
   activeEventTypeGroup: InfiniteEventTypeGroup;
+  canDelete: boolean;
 }
 
 const querySchema = z.object({
@@ -112,7 +115,7 @@ const querySchema = z.object({
 });
 
 const InfiniteTeamsTab: FC<InfiniteTeamsTabProps> = (props: InfiniteTeamsTabProps) => {
-  const { activeEventTypeGroup } = props;
+  const { activeEventTypeGroup, canDelete } = props;
   const { debouncedSearchTerm } = useSearchContext();
   const { t } = useLocale();
 
@@ -147,6 +150,7 @@ const InfiniteTeamsTab: FC<InfiniteTeamsTabProps> = (props: InfiniteTeamsTabProp
           group={activeEventTypeGroup}
           bookerUrl={activeEventTypeGroup.bookerUrl}
           readOnly={activeEventTypeGroup.metadata.readOnly}
+          canDelete={canDelete}
           isPending={query.isPending}
           debouncedSearchTerm={debouncedSearchTerm}
         />
@@ -280,6 +284,7 @@ const MemoizedItem = memo(Item);
 export const InfiniteEventTypeList = ({
   group,
   readOnly,
+  canDelete = true,
   pages,
   bookerUrl,
   lockedByOrg,
@@ -717,7 +722,7 @@ export const InfiniteEventTypeList = ({
                                   </DropdownMenuItem>
                                 )}
                                 {/* readonly is only set when we are on a team - if we are on a user event type null will be the value. */}
-                                {!readOnly && !isChildrenManagedEventType && (
+                                {!readOnly && canDelete && !isChildrenManagedEventType && (
                                   <>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem>
@@ -817,7 +822,7 @@ export const InfiniteEventTypeList = ({
                             </DropdownMenuItem>
                           )}
                           {/* readonly is only set when we are on a team - if we are on a user event type null will be the value. */}
-                          {!readOnly && !isChildrenManagedEventType && (
+                          {!readOnly && canDelete && !isChildrenManagedEventType && (
                             <DropdownMenuItem className="outline-none">
                               <DropdownItem
                                 color="destructive"
@@ -986,7 +991,12 @@ const InfiniteScrollMain = ({
   return (
     <>
       {eventTypeGroups.length > 1 && <HorizontalTabs tabs={tabs} />}
-      {eventTypeGroups.length >= 1 && <InfiniteTeamsTab activeEventTypeGroup={activeEventTypeGroup[0]} />}
+      {eventTypeGroups.length >= 1 && (
+        <InfiniteTeamsTab
+          activeEventTypeGroup={activeEventTypeGroup[0]}
+          canDelete={canDeleteEventTypesInGroup(profiles, activeEventTypeGroup[0]?.teamId)}
+        />
+      )}
       {eventTypeGroups.length === 0 && <CreateFirstEventTypeView slug={profiles[0].slug ?? ""} />}
       <EventTypeEmbedDialog />
       {searchParams?.get("dialog") === "duplicate" && <DuplicateDialog />}
