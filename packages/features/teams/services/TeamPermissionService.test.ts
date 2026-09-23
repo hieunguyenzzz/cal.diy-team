@@ -3,6 +3,7 @@ import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   roleAllowsTeamEventTypeAction,
+  rolesForTeamPermission,
   TEAM_ADMIN_ROLES,
   type TeamEventTypeAction,
   TeamPermissionService,
@@ -11,7 +12,9 @@ import {
 
 const mockFindRoleAndAcceptedByUserIdAndTeamId = vi.fn();
 const mockFindFirstAcceptedByUserIdAndTeamIdsAndRoles = vi.fn();
+const mockFindAcceptedTeamIdsByUserIdAndRoles = vi.fn();
 const membershipRepository = {
+  findAcceptedTeamIdsByUserIdAndRoles: mockFindAcceptedTeamIdsByUserIdAndRoles,
   findRoleAndAcceptedByUserIdAndTeamId: mockFindRoleAndAcceptedByUserIdAndTeamId,
   findFirstAcceptedByUserIdAndTeamIdsAndRoles: mockFindFirstAcceptedByUserIdAndTeamIdsAndRoles,
 } as unknown as MembershipRepository;
@@ -291,6 +294,42 @@ describe("TeamPermissionService", () => {
         })
       ).resolves.toBe(false);
       expect(mockFindFirstAcceptedByUserIdAndTeamIdsAndRoles).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getTeamIdsWithRole", () => {
+    it("returns the teams where the user holds one of the roles", async () => {
+      mockFindAcceptedTeamIdsByUserIdAndRoles.mockResolvedValue([{ teamId: 20 }, { teamId: 30 }]);
+
+      await expect(
+        service.getTeamIdsWithRole({ userId: 1, userRole: UserPermissionRole.USER, roles: TEAM_ADMIN_ROLES })
+      ).resolves.toEqual([20, 30]);
+      expect(mockFindAcceptedTeamIdsByUserIdAndRoles).toHaveBeenCalledWith({
+        userId: 1,
+        roles: TEAM_ADMIN_ROLES,
+      });
+    });
+
+    it("gives the instance admin every team they have an accepted membership in", async () => {
+      mockFindAcceptedTeamIdsByUserIdAndRoles.mockResolvedValue([{ teamId: 10 }, { teamId: 20 }]);
+
+      await expect(
+        service.getTeamIdsWithRole({ userId: 1, userRole: UserPermissionRole.ADMIN, roles: TEAM_ADMIN_ROLES })
+      ).resolves.toEqual([10, 20]);
+      expect(mockFindAcceptedTeamIdsByUserIdAndRoles).toHaveBeenCalledWith({
+        userId: 1,
+        roles: [MembershipRole.MEMBER, MembershipRole.ADMIN, MembershipRole.OWNER],
+      });
+    });
+  });
+
+  describe("rolesForTeamPermission", () => {
+    it("maps webhook.create to ADMIN/OWNER", () => {
+      expect(rolesForTeamPermission("webhook.create")).toEqual(TEAM_ADMIN_ROLES);
+    });
+
+    it.each(["team.delete", "", "constructor", "__proto__"])("denies unknown permission %j", (permission) => {
+      expect(rolesForTeamPermission(permission)).toEqual([]);
     });
   });
 });

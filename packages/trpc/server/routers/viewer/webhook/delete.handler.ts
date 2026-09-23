@@ -20,6 +20,9 @@ export const deleteHandler = async ({ ctx, input }: DeleteOptions) => {
   if (Array.isArray(where.AND)) {
     if (input.eventTypeId) {
       where.AND.push({ eventTypeId: input.eventTypeId });
+    } else if (input.teamId) {
+      // webhookProcedure has already required ADMIN/OWNER of this team.
+      where.AND.push({ teamId: input.teamId });
     } else if (ctx.user.role === "ADMIN") {
       where.AND.push({ OR: [{ platform: true }, { userId: ctx.user.id }] });
     } else {

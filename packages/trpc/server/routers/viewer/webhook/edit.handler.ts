@@ -19,7 +19,8 @@ type EditOptions = {
 };
 
 export const editHandler = async ({ input, ctx }: EditOptions) => {
-  const { id, webhookId: _webhookId, ...data } = input;
+  // An edit never moves a webhook between owners, so teamId is only compared, never written.
+  const { id, webhookId: _webhookId, teamId: inputTeamId, ...data } = input;
 
   const webhook = await prisma.webhook.findUnique({
     where: {
@@ -29,6 +30,10 @@ export const editHandler = async ({ input, ctx }: EditOptions) => {
 
   if (!webhook) {
     return null;
+  }
+
+  if (inputTeamId != null && inputTeamId !== webhook.teamId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Webhook cannot be moved to another team" });
   }
 
   // SSRF validation: only validate if URL is being changed

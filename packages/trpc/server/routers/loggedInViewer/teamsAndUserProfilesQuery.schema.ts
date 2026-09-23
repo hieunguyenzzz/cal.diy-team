@@ -6,7 +6,6 @@ export const ZTeamsAndUserProfilesQueryInputSchema = z
     withPermission: z
       .object({
         permission: z.string(),
-        fallbackRoles: z.array(z.string()).optional(),
       })
       .optional(),
   })

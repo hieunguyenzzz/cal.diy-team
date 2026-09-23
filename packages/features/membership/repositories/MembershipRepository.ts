@@ -355,6 +355,19 @@ export class MembershipRepository {
     });
   }
 
+  async findAcceptedTeamIdsByUserIdAndRoles({
+    userId,
+    roles,
+  }: {
+    userId: number;
+    roles: readonly MembershipRole[];
+  }) {
+    return this.prismaClient.membership.findMany({
+      where: { userId, accepted: true, role: { in: [...roles] } },
+      select: { teamId: true },
+    });
+  }
+
   async findFirstAcceptedByUserIdAndTeamIdsAndRoles({
     userId,
     teamIds,

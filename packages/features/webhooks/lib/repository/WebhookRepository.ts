@@ -8,7 +8,6 @@ import type { PrismaClient } from "@calcom/prisma";
 import { prisma as defaultPrisma } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
 import type { TimeUnit, WebhookTriggerEvents } from "@calcom/prisma/enums";
-import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 import type { Webhook, WebhookGroup, WebhookSubscriber } from "../dto/types";
 import { WebhookOutputMapper } from "../infrastructure/mappers/WebhookOutputMapper";
 import type {
@@ -18,13 +17,6 @@ import type {
 } from "../interface/IWebhookRepository";
 import { parseWebhookVersion } from "../interface/IWebhookRepository";
 import type { GetSubscribersOptions } from "./types";
-
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
 
 // Type for raw query results from the database
 interface WebhookQueryResult {
@@ -316,7 +308,15 @@ export class WebhookRepository implements IWebhookRepository {
     }));
   }
 
-  async getFilteredWebhooksForUser({ userId, userRole }: { userId: number; userRole?: UserPermissionRole }) {
+  async getFilteredWebhooksForUser({
+    userId,
+    teamIds,
+    includePlatformWebhooks,
+  }: {
+    userId: number;
+    teamIds: number[];
+    includePlatformWebhooks: boolean;
+  }) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -387,9 +387,6 @@ export class WebhookRepository implements IWebhookRepository {
       throw new Error("User not found");
     }
 
-    // Use permission service which handles both PBAC and role-based fallbacks
-    const permissionService = new PermissionCheckService();
-
     // Build webhook groups with proper permissions
     const webhookGroups: WebhookGroup[] = [];
 
@@ -408,39 +405,9 @@ export class WebhookRepository implements IWebhookRepository {
       },
     });
 
-    // Check permissions for each team
-    // The permission service handles PBAC when enabled and falls back to role-based permissions
+    const visibleTeamIds = new Set(teamIds);
     for (const membership of user.teams) {
-      const teamId = membership.team.id;
-
-      // Check read permission (fallback: MEMBER, ADMIN, OWNER can read)
-      const canRead = await permissionService.checkPermission({
-        userId,
-        teamId,
-        permission: "webhook.read",
-        fallbackRoles: [MembershipRole.MEMBER, MembershipRole.ADMIN, MembershipRole.OWNER],
-      });
-
-      if (!canRead) {
-        // User doesn't have permission to view this team's webhooks
-        continue;
-      }
-
-      // Check update/delete permissions in parallel (fallback: only ADMIN, OWNER can modify)
-      const [canUpdate, canDelete] = await Promise.all([
-        permissionService.checkPermission({
-          userId,
-          teamId,
-          permission: "webhook.update",
-          fallbackRoles: [MembershipRole.ADMIN, MembershipRole.OWNER],
-        }),
-        permissionService.checkPermission({
-          userId,
-          teamId,
-          permission: "webhook.delete",
-          fallbackRoles: [MembershipRole.ADMIN, MembershipRole.OWNER],
-        }),
-      ]);
+      if (!visibleTeamIds.has(membership.team.id)) continue;
 
       webhookGroups.push({
         teamId: membership.team.id,
@@ -451,14 +418,14 @@ export class WebhookRepository implements IWebhookRepository {
         },
         webhooks: WebhookOutputMapper.toWebhookList(membership.team.webhooks.filter(filterWebhooks)),
         metadata: {
-          canModify: canUpdate,
-          canDelete,
+          canModify: true,
+          canDelete: true,
         },
       });
     }
 
     // Add platform webhooks for admins
-    if (userRole === UserPermissionRole.ADMIN) {
+    if (includePlatformWebhooks) {
       const platformWebhooks = await this.prisma.webhook.findMany({
         where: { platform: true },
         select: {
@@ -515,7 +482,7 @@ export class WebhookRepository implements IWebhookRepository {
    * - Permission-based team filtering
    */
   async listWebhooks(options: ListWebhooksOptions): Promise<Webhook[]> {
-    const { userId, appId, eventTypeId, eventTriggers } = options;
+    const { userId, teamIds, appId, eventTypeId, eventTriggers } = options;
 
     // Build WHERE conditions
     const whereConditions: NonNullable<Prisma.WebhookWhereInput["AND"]> = [
@@ -523,10 +490,9 @@ export class WebhookRepository implements IWebhookRepository {
       { appId: appId ?? null },
     ];
 
-    const user = await this.userRepository.findUserTeams(userId);
-
+    let managedParentId: number | null | undefined;
     if (eventTypeId) {
-      const managedParentId = await this.eventTypeRepository.findParentEventTypeId(eventTypeId);
+      managedParentId = await this.eventTypeRepository.findParentEventTypeId(eventTypeId);
 
       if (managedParentId) {
         // Include webhooks from both the event type and its parent (if active)
@@ -537,26 +503,9 @@ export class WebhookRepository implements IWebhookRepository {
         whereConditions.push({ eventTypeId });
       }
     } else {
-      // No eventTypeId - filter by user and their allowed teams
-      const permissionService = new PermissionCheckService();
-      const teamIds = user?.teams?.map((m) => m.teamId) ?? [];
-
-      const allowedTeamIds = (
-        await Promise.all(
-          teamIds.map(async (teamId) => {
-            const ok = await permissionService.checkPermission({
-              userId,
-              teamId,
-              permission: "webhook.read",
-              fallbackRoles: [MembershipRole.ADMIN, MembershipRole.OWNER],
-            });
-            return ok ? teamId : null;
-          })
-        )
-      ).filter((x): x is number => x !== null);
-
+      // No eventTypeId - the user's own webhooks plus those of the given teams
       whereConditions.push({
-        OR: [{ userId }, ...(allowedTeamIds.length ? [{ teamId: { in: allowedTeamIds } }] : [])],
+        OR: [{ userId }, ...(teamIds.length ? [{ teamId: { in: teamIds } }] : [])],
       });
     }
 
@@ -587,6 +536,13 @@ export class WebhookRepository implements IWebhookRepository {
       },
     });
 
-    return WebhookOutputMapper.toWebhookList(webhooks);
+    // A managed child inherits its team parent's webhooks for display, but not their secrets.
+    const visibleWebhooks = managedParentId
+      ? webhooks.map((webhook) =>
+          webhook.eventTypeId === managedParentId ? { ...webhook, secret: null } : webhook
+        )
+      : webhooks;
+
+    return WebhookOutputMapper.toWebhookList(visibleWebhooks);
   }
 }
