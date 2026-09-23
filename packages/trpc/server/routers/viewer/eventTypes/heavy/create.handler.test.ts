@@ -118,3 +118,40 @@ describe("createHandler team permissions", () => {
     );
   });
 });
+
+describe("createHandler schedule ownership", () => {
+  const personalInput = { title: "Mine", slug: "mine", length: 15, scheduleId: 66 } as CreateOptions["input"];
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockCreate.mockResolvedValue({ id: 99 });
+    const { EventTypeRepository } = await import(
+      "@calcom/features/eventtypes/repositories/eventTypeRepository"
+    );
+    vi.mocked(EventTypeRepository).mockImplementation(function () {
+      return { create: mockCreate } as unknown as InstanceType<typeof EventTypeRepository>;
+    });
+  });
+
+  it("does not connect a schedule owned by someone else", async () => {
+    prismaMock.schedule.findFirst.mockResolvedValue(null);
+
+    await createHandler({ ctx: buildCtx(), input: personalInput });
+
+    expect(prismaMock.schedule.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 1, id: 66 } })
+    );
+    expect(mockCreate.mock.calls[0][0]).not.toHaveProperty("schedule");
+    expect(mockCreate.mock.calls[0][0]).not.toHaveProperty("scheduleId");
+  });
+
+  it("connects the caller's own schedule", async () => {
+    prismaMock.schedule.findFirst.mockResolvedValue({ id: 66 } as Awaited<
+      ReturnType<typeof prismaMock.schedule.findFirst>
+    >);
+
+    await createHandler({ ctx: buildCtx(), input: personalInput });
+
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ schedule: { connect: { id: 66 } } }));
+  });
+});

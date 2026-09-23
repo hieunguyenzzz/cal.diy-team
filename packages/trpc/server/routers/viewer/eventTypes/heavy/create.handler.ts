@@ -64,8 +64,18 @@ export const createHandler = async ({ ctx, input }: CreateOptions) => {
     // Only connecting the current user for non-managed event types and non team event types
     users: isManagedEventType || schedulingType ? undefined : { connect: { id: userId } },
     locations,
-    schedule: scheduleId ? { connect: { id: scheduleId } } : undefined,
   };
+
+  if (scheduleId) {
+    // Like update: silently skip a schedule the caller does not own instead of linking it.
+    const ownSchedule = await ctx.prisma.schedule.findFirst({
+      where: { userId, id: scheduleId },
+      select: { id: true },
+    });
+    if (ownSchedule) {
+      data.schedule = { connect: { id: scheduleId } };
+    }
+  }
 
   if (isCalVideoLocationActive && calVideoSettings) {
     data.calVideoSettings = {
