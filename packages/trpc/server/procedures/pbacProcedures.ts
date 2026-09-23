@@ -1,22 +1,18 @@
+import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import { MembershipRole } from "@calcom/prisma/enums";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import authedProcedure from "./authedProcedure";
 
 type PermissionString = string;
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
 
 /**
  * Creates a procedure that checks team-level PBAC permissions.
  * The teamId is expected to come from input.teamId.
  *
- * @param permission - The specific permission required (e.g., "team.read", "team.update")
- * @param fallbackRoles - Roles to check when PBAC is disabled (defaults to ["ADMIN", "OWNER"])
+ * @param permission - Named in the FORBIDDEN message (e.g., "booking.readTeamBookings")
+ * @param fallbackRoles - Accepted team roles that may pass (defaults to ["ADMIN", "OWNER"]); there is no PBAC
  * @returns A procedure that checks the specified permission for the team
  */
 function createTeamPbacProcedure(
@@ -30,12 +26,12 @@ function createTeamPbacProcedure(
       })
     )
     .use(async ({ ctx, input, next }) => {
-      const permissionCheckService: PermissionCheckService = new PermissionCheckService();
-      const hasPermission: boolean = await permissionCheckService.checkPermission({
+      const teamPermissionService = new TeamPermissionService(new MembershipRepository(ctx.prisma));
+      const hasPermission = await teamPermissionService.hasTeamRole({
         userId: ctx.user.id,
+        userRole: ctx.user.role,
         teamId: input.teamId,
-        permission,
-        fallbackRoles,
+        roles: fallbackRoles,
       });
 
       if (!hasPermission) {
@@ -49,50 +45,4 @@ function createTeamPbacProcedure(
     });
 }
 
-/**
- * Creates a procedure that checks organization-level PBAC permissions.
- * The organizationId is taken from ctx.user.organizationId.
- *
- * @param permission - The specific permission required (e.g., "organization.read", "organization.update")
- * @param fallbackRoles - Roles to check when PBAC is disabled (defaults to ["ADMIN", "OWNER"])
- * @returns A procedure that checks the specified permission for the organization and adds organizationId to context
- */
-function createOrgPbacProcedure(
-  permission: PermissionString,
-  fallbackRoles: MembershipRole[] = [MembershipRole.ADMIN, MembershipRole.OWNER]
-) {
-  return authedProcedure.use(async ({ ctx, next }) => {
-    const organizationId = ctx.user.organizationId;
-
-    if (!organizationId) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "You are not a member of any organization.",
-      });
-    }
-
-    const permissionCheckService = new PermissionCheckService();
-    const hasPermission = await permissionCheckService.checkPermission({
-      userId: ctx.user.id,
-      teamId: organizationId,
-      permission,
-      fallbackRoles,
-    });
-
-    if (!hasPermission) {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: `Permission required: ${permission}`,
-      });
-    }
-
-    return next({
-      ctx: {
-        ...ctx,
-        organizationId,
-      },
-    });
-  });
-}
-
-export { createTeamPbacProcedure, createOrgPbacProcedure };
+export { createTeamPbacProcedure };
