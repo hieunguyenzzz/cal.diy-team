@@ -27,12 +27,14 @@ vi.mock("../../store/onboarding-store", () => ({
   useOnboardingStore: () => ({ resetOnboarding: mockResetOnboarding }),
 }));
 
+const mockRefetch = vi.fn();
+
 type MutationOptions = { onSuccess: () => Promise<void> };
 let updateProfileOptions: MutationOptions | undefined;
 
 vi.mock("@calcom/trpc/react", () => ({
   trpc: {
-    useUtils: () => ({ viewer: { me: { get: { refetch: vi.fn() } } } }),
+    useUtils: () => ({ viewer: { me: { get: { refetch: mockRefetch } } } }),
     viewer: {
       eventTypes: { list: { useQuery: () => ({ data: [{ id: 1 }] }) } },
       eventTypesHeavy: { create: { useMutation: () => ({ mutateAsync: vi.fn() }) } },
@@ -62,6 +64,15 @@ describe("useSubmitPersonalOnboarding", () => {
 
     expect(mockResetOnboarding).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith("/event-types?welcomeToCalcomModal=true");
+  });
+
+  it("clears the onboarding store even when refetching the user fails", async () => {
+    mockRefetch.mockRejectedValueOnce(new Error("refetch failed"));
+    useSubmitPersonalOnboarding();
+
+    await expect(updateProfileOptions?.onSuccess()).rejects.toThrow("refetch failed");
+
+    expect(mockResetOnboarding).toHaveBeenCalledTimes(1);
   });
 
   it("does not clear the onboarding store before onboarding completes", () => {

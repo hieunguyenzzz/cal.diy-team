@@ -39,6 +39,11 @@ export const useSubmitPersonalOnboarding = () => {
 
   const mutation = trpc.viewer.me.updateProfile.useMutation({
     onSuccess: async () => {
+      // The onboarding store persists in IndexedDB, so without this the next user to sign up in this
+      // browser would see these personal details pre-filled. Done first because the profile is already
+      // saved, so the draft must be dropped even if the steps below throw.
+      resetOnboarding();
+
       try {
         // Create default event types if user has none
         if (eventTypes?.length === 0) {
@@ -58,10 +63,6 @@ export const useSubmitPersonalOnboarding = () => {
       }
 
       await utils.viewer.me.get.refetch();
-
-      // The onboarding store persists in IndexedDB, so without this the next user to sign up in this
-      // browser would see these personal details pre-filled.
-      resetOnboarding();
 
       const redirectUrl = localStorage.getItem(ONBOARDING_REDIRECT_KEY);
       if (redirectUrl) {
