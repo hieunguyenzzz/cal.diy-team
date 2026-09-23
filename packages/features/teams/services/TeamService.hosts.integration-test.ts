@@ -14,6 +14,7 @@ describe("TeamService hosts follow membership (DB)", () => {
   const userIds: number[] = [];
   const eventTypeIds: number[] = [];
   let teamId: number | undefined;
+  let otherTeamId: number | undefined;
   let admin: { id: number; email: string };
   let joiner: { id: number; email: string };
 
@@ -39,14 +40,15 @@ describe("TeamService hosts follow membership (DB)", () => {
   const createEventType = async (
     slug: string,
     schedulingType: SchedulingType,
-    assignAllTeamMembers: boolean
+    assignAllTeamMembers: boolean,
+    onTeamId = teamId
   ) => {
     const eventType = await prisma.eventType.create({
       data: {
         title: slug,
         slug: `${suffix}-${slug}`,
         length: 30,
-        teamId,
+        teamId: onTeamId,
         schedulingType,
         assignAllTeamMembers,
       },
@@ -68,6 +70,16 @@ describe("TeamService hosts follow membership (DB)", () => {
       select: { id: true },
     });
     teamId = team.id;
+    // A second team the joiner already belongs to, whose Host rows must be left alone.
+    const otherTeam = await prisma.team.create({
+      data: {
+        name: `Other ${suffix}`,
+        slug: `other-${suffix}`,
+        members: { create: { userId: joiner.id, role: MembershipRole.MEMBER, accepted: true } },
+      },
+      select: { id: true },
+    });
+    otherTeamId = otherTeam.id;
   });
 
   afterAll(async () => {
@@ -75,9 +87,10 @@ describe("TeamService hosts follow membership (DB)", () => {
       await prisma.host.deleteMany({ where: { eventTypeId: { in: eventTypeIds } } });
       await prisma.eventType.deleteMany({ where: { id: { in: eventTypeIds } } });
     }
-    if (teamId !== undefined) {
-      await prisma.membership.deleteMany({ where: { teamId } });
-      await prisma.team.deleteMany({ where: { id: teamId } });
+    for (const id of [teamId, otherTeamId]) {
+      if (id === undefined) continue;
+      await prisma.membership.deleteMany({ where: { teamId: id } });
+      await prisma.team.deleteMany({ where: { id } });
     }
     if (userIds.length > 0) {
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -91,20 +104,31 @@ describe("TeamService hosts follow membership (DB)", () => {
       select: { eventTypeId: true, isFixed: true, priority: true, weight: true, scheduleId: true },
     });
 
-  it("adds a new member to assign-all event types only, fixed for collective, and removes all on leave", async () => {
+  it("adds a new member to assign-all event types only, fixed for collective, and removes only this team's hosts on leave", async () => {
     const collectiveAll = await createEventType("collective-all", SchedulingType.COLLECTIVE, true);
     const roundRobinAll = await createEventType("rr-all", SchedulingType.ROUND_ROBIN, true);
-    await createEventType("rr-picked", SchedulingType.ROUND_ROBIN, false);
+    const roundRobinPicked = await createEventType("rr-picked", SchedulingType.ROUND_ROBIN, false);
+    const otherTeamEvent = await createEventType(
+      "other-team",
+      SchedulingType.ROUND_ROBIN,
+      false,
+      otherTeamId
+    );
+    await prisma.host.create({ data: { userId: joiner.id, eventTypeId: otherTeamEvent, isFixed: false } });
 
     await service.addMemberByEmail(asAdmin(), teamId as number, {
       email: joiner.email,
       role: MembershipRole.MEMBER,
     });
 
-    expect(await joinerHosts()).toEqual([
+    const ownTeamHosts = async () =>
+      (await joinerHosts()).filter((host) => host.eventTypeId !== otherTeamEvent);
+    expect(await ownTeamHosts()).toEqual([
       { eventTypeId: collectiveAll, isFixed: true, priority: 2, weight: 100, scheduleId: null },
       { eventTypeId: roundRobinAll, isFixed: false, priority: 2, weight: 100, scheduleId: null },
     ]);
+    // A host picked by hand on a non-assign-all event type must go too when they leave.
+    await prisma.host.create({ data: { userId: joiner.id, eventTypeId: roundRobinPicked, isFixed: false } });
 
     await service.removeMember(
       { userId: joiner.id, userRole: UserPermissionRole.USER },
@@ -112,7 +136,7 @@ describe("TeamService hosts follow membership (DB)", () => {
       joiner.id
     );
 
-    expect(await joinerHosts()).toEqual([]);
+    expect((await joinerHosts()).map((host) => host.eventTypeId)).toEqual([otherTeamEvent]);
     expect(
       await prisma.membership.findUnique({
         where: { userId_teamId: { userId: joiner.id, teamId: teamId as number } },

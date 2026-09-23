@@ -1,3 +1,4 @@
+import { DEFAULT_HOST_PRIORITY, DEFAULT_HOST_WEIGHT } from "@calcom/features/eventtypes/lib/hostDefaults";
 import type { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import type { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import { TEAM_ADMIN_ROLES, TEAM_OWNER_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
@@ -24,15 +25,12 @@ interface ITeamServiceDeps {
   teamRepository: TeamRepository;
   membershipRepository: MembershipRepository;
   userRepository: Pick<UserRepository, "findByEmailIncludeLocked">;
-  eventTypeRepository: Pick<EventTypeRepository, "findManyByTeamIdWithAssignAllTeamMembers">;
+  eventTypeRepository: Pick<EventTypeRepository, "findManyAssignAllByTeamId">;
   teamPermissionService: TeamPermissionService;
   uploadLogo: (args: { teamId: number; logo: string }) => Promise<string>;
 }
 
 const REMOVE_MEMBER_DENIED = "Only team admins can remove members";
-// The same neutral values the assignment tab gives a newly picked host.
-const DEFAULT_HOST_PRIORITY = 2;
-const DEFAULT_HOST_WEIGHT = 100;
 
 class TeamService {
   constructor(private readonly deps: ITeamServiceDeps) {}
@@ -163,7 +161,7 @@ class TeamService {
     // "Add all team members, including future members" is stored as Host rows, so the new member joins those
     // event types now. scheduleId is left null, which means their default schedule and follows later changes.
     // Read-then-write: an event type toggled in between is picked up on its next save. Accepted for v1.
-    const assignAllEventTypes = await this.deps.eventTypeRepository.findManyByTeamIdWithAssignAllTeamMembers({
+    const assignAllEventTypes = await this.deps.eventTypeRepository.findManyAssignAllByTeamId({
       teamId,
     });
 

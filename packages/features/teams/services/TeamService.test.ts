@@ -1,6 +1,6 @@
+import type { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import type { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import type { TeamRepository } from "@calcom/features/teams/repositories/TeamRepository";
-import type { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import type { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
@@ -33,7 +33,7 @@ const membershipRepository = {
   findByTeamIdIncludeUser: vi.fn(),
 };
 const userRepository = { findByEmailIncludeLocked: vi.fn() };
-const eventTypeRepository = { findManyByTeamIdWithAssignAllTeamMembers: vi.fn() };
+const eventTypeRepository = { findManyAssignAllByTeamId: vi.fn() };
 const uploadLogo = vi.fn();
 
 const service = new TeamService({
@@ -71,7 +71,7 @@ describe("TeamService", () => {
     teamRepository.createWithOwner.mockResolvedValue(team);
     teamRepository.update.mockResolvedValue(team);
     membershipRepository.countAcceptedOwners.mockResolvedValue(2);
-    eventTypeRepository.findManyByTeamIdWithAssignAllTeamMembers.mockResolvedValue([]);
+    eventTypeRepository.findManyAssignAllByTeamId.mockResolvedValue([]);
     givenMemberships({});
   });
 
@@ -408,7 +408,7 @@ describe("TeamService", () => {
 
     // "Add all team members, including future members" lives in Host rows, so a new member must join them.
     it("makes the new member a host on every assign-all event type of the team", async () => {
-      eventTypeRepository.findManyByTeamIdWithAssignAllTeamMembers.mockResolvedValue([
+      eventTypeRepository.findManyAssignAllByTeamId.mockResolvedValue([
         { id: 3, schedulingType: "COLLECTIVE" },
         { id: 4, schedulingType: "ROUND_ROBIN" },
       ]);
@@ -418,7 +418,7 @@ describe("TeamService", () => {
         role: MembershipRole.MEMBER,
       });
 
-      expect(eventTypeRepository.findManyByTeamIdWithAssignAllTeamMembers).toHaveBeenCalledWith({
+      expect(eventTypeRepository.findManyAssignAllByTeamId).toHaveBeenCalledWith({
         teamId: 10,
       });
       expect(membershipRepository.createAcceptedWithHosts).toHaveBeenCalledWith({

@@ -185,11 +185,7 @@ const EventTypeWeb = ({
       />
     ),
     team: (
-      <EventTeamAssignmentTab
-        teamMembers={teamMembers}
-        team={team}
-        eventType={eventType}
-      />
+      <EventTeamAssignmentTab teamMembers={teamMembers} team={team} />
     ),
     limits: <EventLimitsTab eventType={eventType} />,
     advanced: (

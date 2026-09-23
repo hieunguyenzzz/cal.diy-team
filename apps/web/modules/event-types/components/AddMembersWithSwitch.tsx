@@ -1,6 +1,7 @@
 import AssignAllTeamMembers from "@calcom/features/eventtypes/components/AssignAllTeamMembers";
 import type { CheckedSelectOption } from "@calcom/features/eventtypes/components/CheckedTeamSelect";
 import CheckedTeamSelect from "@calcom/features/eventtypes/components/CheckedTeamSelect";
+import { DEFAULT_HOST_PRIORITY, DEFAULT_HOST_WEIGHT } from "@calcom/features/eventtypes/lib/hostDefaults";
 import type { Host, TeamMember } from "@calcom/features/eventtypes/lib/types";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import type { Dispatch, SetStateAction } from "react";
@@ -8,8 +9,6 @@ import type { Dispatch, SetStateAction } from "react";
 // Restored from before the Cal.diy trim and cut down to plain host selection: no segments, platform
 // wrapper or host groups. Priority is live (the host list's priority button feeds getLuckyUser's round-robin
 // ordering); weights stay at their neutral default because weighting is disabled until it gets its own UI.
-const DEFAULT_PRIORITY = 2;
-const DEFAULT_WEIGHT = 100;
 
 interface IUserToValue {
   id: number | null;
@@ -56,8 +55,8 @@ const CheckedHostField = ({
         selected.map((option) => ({
           isFixed,
           userId: Number.parseInt(option.value, 10),
-          priority: option.priority ?? DEFAULT_PRIORITY,
-          weight: option.weight ?? DEFAULT_WEIGHT,
+          priority: option.priority ?? DEFAULT_HOST_PRIORITY,
+          weight: option.weight ?? DEFAULT_HOST_WEIGHT,
           scheduleId: option.defaultScheduleId ?? null,
           groupId: null,
         }))
@@ -72,8 +71,8 @@ const CheckedHostField = ({
               {
                 ...option,
                 isFixed,
-                priority: host.priority ?? DEFAULT_PRIORITY,
-                weight: host.weight ?? DEFAULT_WEIGHT,
+                priority: host.priority ?? DEFAULT_HOST_PRIORITY,
+                weight: host.weight ?? DEFAULT_HOST_WEIGHT,
               },
             ]
           : [];
@@ -138,5 +137,3 @@ function AddMembersWithSwitch({
 }
 
 export { AddMembersWithSwitch, mapUserToValue };
-export type { AddMembersWithSwitchProps };
-export default AddMembersWithSwitch;

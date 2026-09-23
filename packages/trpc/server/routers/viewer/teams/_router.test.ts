@@ -1,8 +1,8 @@
+import type { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import type { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import type { TeamRepository } from "@calcom/features/teams/repositories/TeamRepository";
 import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import { TeamService } from "@calcom/features/teams/services/TeamService";
-import type { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import type { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,7 +30,7 @@ const membershipRepository = {
   countAcceptedOwners: vi.fn(),
 };
 const userRepository = { findByEmailIncludeLocked: vi.fn() };
-const eventTypeRepository = { findManyByTeamIdWithAssignAllTeamMembers: vi.fn().mockResolvedValue([]) };
+const eventTypeRepository = { findManyAssignAllByTeamId: vi.fn().mockResolvedValue([]) };
 const uploadLogo = vi.fn();
 
 // The real service with fake repositories, so each test exercises zod, the permission rules and the

@@ -4,12 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@calcom/prisma", () => ({ default: {}, prisma: {}, readonlyPrisma: {} }));
 
-describe("EventTypeRepository.findManyByTeamIdWithAssignAllTeamMembers", () => {
+describe("EventTypeRepository.findManyAssignAllByTeamId", () => {
   it("returns only the team's assign-all event types with their scheduling type", async () => {
     const findMany = vi.fn().mockResolvedValue([{ id: 3, schedulingType: "COLLECTIVE" }]);
     const repository = new EventTypeRepository({ eventType: { findMany } } as unknown as PrismaClient);
 
-    await expect(repository.findManyByTeamIdWithAssignAllTeamMembers({ teamId: 10 })).resolves.toEqual([
+    await expect(repository.findManyAssignAllByTeamId({ teamId: 10 })).resolves.toEqual([
       { id: 3, schedulingType: "COLLECTIVE" },
     ]);
     expect(findMany).toHaveBeenCalledWith({

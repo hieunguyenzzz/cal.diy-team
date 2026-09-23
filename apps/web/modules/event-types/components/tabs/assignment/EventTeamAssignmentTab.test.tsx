@@ -73,7 +73,6 @@ function Harness({ schedulingType }: { schedulingType: "COLLECTIVE" | "ROUND_ROB
       <EventTeamAssignmentTab
         team={{ id: 64 } as unknown as EventTypeSetupProps["team"]}
         teamMembers={teamMembers}
-        eventType={{ schedulingType } as unknown as EventTypeSetupProps["eventType"]}
       />
       <FormState />
     </FormProvider>

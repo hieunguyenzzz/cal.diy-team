@@ -1,4 +1,5 @@
 import { checkForEmptyAssignment } from "@calcom/features/eventtypes/lib/checkForEmptyAssignment";
+import { DEFAULT_HOST_PRIORITY, DEFAULT_HOST_WEIGHT } from "@calcom/features/eventtypes/lib/hostDefaults";
 import type {
   EventTypeSetupProps,
   FormValues,
@@ -26,8 +27,8 @@ const toHosts = (teamMembers: TeamMember[], currentHosts: Host[], isFixed: boole
     return {
       isFixed,
       userId,
-      priority: existing?.priority ?? 2,
-      weight: existing?.weight ?? 100,
+      priority: existing?.priority ?? DEFAULT_HOST_PRIORITY,
+      weight: existing?.weight ?? DEFAULT_HOST_WEIGHT,
       // Keep a host's chosen schedule if they were already added.
       scheduleId: existing?.scheduleId || member.defaultScheduleId,
       groupId: null,
@@ -243,13 +244,14 @@ const Hosts = ({
             </>
           );
         }
+        // Controller's render must return an element, so an empty fragment stands in for null.
         return <></>;
       }}
     />
   );
 };
 
-export type EventTeamAssignmentTabProps = Pick<EventTypeSetupProps, "teamMembers" | "team" | "eventType">;
+export type EventTeamAssignmentTabProps = Pick<EventTypeSetupProps, "teamMembers" | "team">;
 
 export const EventTeamAssignmentTab = ({ team, teamMembers }: EventTeamAssignmentTabProps) => {
   const { t } = useLocale();
@@ -312,5 +314,3 @@ export const EventTeamAssignmentTab = ({ team, teamMembers }: EventTeamAssignmen
     </div>
   );
 };
-
-export default EventTeamAssignmentTab;
