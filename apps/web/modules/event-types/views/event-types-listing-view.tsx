@@ -47,7 +47,7 @@ import {
 } from "@calcom/web/modules/event-types/components/CreateEventTypeDialog";
 import { DuplicateDialog } from "@calcom/web/modules/event-types/components/DuplicateDialog";
 import { InfiniteSkeletonLoader } from "@calcom/web/modules/event-types/components/SkeletonLoader";
-import { canDeleteEventTypesInGroup } from "@calcom/web/modules/event-types/lib/canDeleteEventTypesInGroup";
+import { canDeleteEventTypesInGroup } from "@calcom/web/modules/event-types/lib/canDeleteEventTypes";
 import { SearchIcon } from "@coss/ui/icons";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { TRPCClientError } from "@trpc/client";
@@ -92,7 +92,7 @@ const useSearchContext = (): SearchContextType => {
 interface InfiniteEventTypeListProps {
   group: InfiniteEventTypeGroup;
   readOnly: boolean;
-  canDelete?: boolean;
+  canDelete: boolean;
   bookerUrl: string | null;
   pages:
     | {
@@ -284,7 +284,7 @@ const MemoizedItem = memo(Item);
 export const InfiniteEventTypeList = ({
   group,
   readOnly,
-  canDelete = true,
+  canDelete,
   pages,
   bookerUrl,
   lockedByOrg,

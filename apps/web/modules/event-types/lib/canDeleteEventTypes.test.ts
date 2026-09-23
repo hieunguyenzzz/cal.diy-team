@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canDeleteEventTypesInGroup } from "./canDeleteEventTypesInGroup";
+import { canDeleteEventTypesInGroup } from "./canDeleteEventTypes";
 
 const profiles = [
   { teamId: null, canDeleteEventTypes: undefined },
