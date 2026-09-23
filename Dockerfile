@@ -48,8 +48,11 @@ RUN yarn workspace @calcom/trpc run build
 RUN yarn --cwd packages/embeds/embed-core workspace @calcom/embed-core run build
 RUN yarn --cwd apps/web workspace @calcom/web run copy-app-store-static
 RUN yarn --cwd apps/web workspace @calcom/web run build
-# .next/standalone is unused dead weight here: the runtime still boots via
-# scripts/start.sh -> yarn start, not the standalone server, so it's safe to drop.
+# BUILD_STANDALONE=true (above) makes `next build` also emit .next/standalone,
+# a self-contained server + pruned node_modules - but start.sh still boots via
+# `yarn start`, not the standalone server, so it's ~400MB of dead weight. We
+# leave BUILD_STANDALONE itself untouched (removing it is a separate, unverified
+# change) and just delete the output we don't consume.
 RUN rm -rf node_modules/.cache .yarn/cache apps/web/.next/cache apps/web/.next/standalone
 
 FROM node:20 AS builder-two
@@ -74,16 +77,13 @@ RUN chmod +x scripts/*
 # merge their contents together instead of keeping each as its own directory.
 # Pre-bucket with `mv` (which has no such quirk) so the runner stage can COPY
 # each bucket as a single whole-directory source and keep every layer small.
-RUN mkdir -p /nm-buckets/dot /nm-buckets/upper /nm-buckets/a-f /nm-buckets/g-m /nm-buckets/n-s /nm-buckets/t-z /nm-buckets/scoped-a-h /nm-buckets/scoped-i-r /nm-buckets/scoped-s-z && \
-  mv node_modules/.bin node_modules/.prisma node_modules/.yarn-state.yml /nm-buckets/dot/ && \
-  mv node_modules/[A-Z]* /nm-buckets/upper/ && \
-  mv node_modules/[a-f]* /nm-buckets/a-f/ && \
-  mv node_modules/[g-m]* /nm-buckets/g-m/ && \
-  mv node_modules/[n-s]* /nm-buckets/n-s/ && \
-  mv node_modules/[t-z]* /nm-buckets/t-z/ && \
-  mv node_modules/@[0-9a-h]* /nm-buckets/scoped-a-h/ && \
-  mv node_modules/@[i-r]* /nm-buckets/scoped-i-r/ && \
-  mv node_modules/@[s-z]* /nm-buckets/scoped-s-z/ && \
+# The loop (not a fixed `mv` per glob) means an empty match never breaks the
+# build, and the `other` bucket is a catch-all for anything the case doesn't
+# name explicitly, so a future dependency change can't silently fail this.
+RUN set -e; for b in dot upper a-f g-m n-s t-z scoped-a-h scoped-i-r scoped-s-z other; do mkdir -p /nm-buckets/$b; done; \
+  for e in node_modules/* node_modules/.[!.]*; do [ -e "$e" ] || [ -L "$e" ] || continue; n=${e#node_modules/}; \
+    case "$n" in .*) b=dot;; [A-Z]*) b=upper;; [a-f]*) b=a-f;; [g-m]*) b=g-m;; [n-s]*) b=n-s;; [t-z]*) b=t-z;; \
+      @[0-9a-h]*) b=scoped-a-h;; @[i-r]*) b=scoped-i-r;; @[s-z]*) b=scoped-s-z;; *) b=other;; esac; mv "$e" /nm-buckets/$b/; done; \
   rmdir node_modules
 
 # Save value used during this build stage. If NEXT_PUBLIC_WEBAPP_URL and BUILT_NEXT_PUBLIC_WEBAPP_URL differ at
@@ -118,6 +118,7 @@ COPY --from=builder-two /nm-buckets/t-z ./node_modules/
 COPY --from=builder-two /nm-buckets/scoped-a-h ./node_modules/
 COPY --from=builder-two /nm-buckets/scoped-i-r ./node_modules/
 COPY --from=builder-two /nm-buckets/scoped-s-z ./node_modules/
+COPY --from=builder-two /nm-buckets/other ./node_modules/
 ARG NEXT_PUBLIC_WEBAPP_URL=http://localhost:3000
 ENV NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL \
   BUILT_NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL
