@@ -1,9 +1,9 @@
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
+import { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
 import {
   TEAM_ADMIN_ROLES,
   TeamPermissionService,
 } from "@calcom/features/teams/services/TeamPermissionService";
-import { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { getUserAvatarUrl } from "@calcom/lib/getAvatarUrl";
 import prisma from "@calcom/prisma";

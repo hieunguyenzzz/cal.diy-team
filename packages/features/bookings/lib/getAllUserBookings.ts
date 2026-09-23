@@ -15,7 +15,13 @@ export type SortOptions = {
 };
 type GetOptions = {
   ctx: {
-    user: { id: number; email: string; orgId?: number | null; role?: UserPermissionRole };
+    user: {
+      id: number;
+      email: string;
+      orgId?: number | null;
+      // omitted ⇒ no instance-admin override (API v2 callers pass none)
+      role?: UserPermissionRole;
+    };
     prisma: PrismaClient;
     kysely: Kysely<DB>;
   };

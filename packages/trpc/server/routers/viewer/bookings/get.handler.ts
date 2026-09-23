@@ -99,7 +99,13 @@ export async function getBookings({
   take,
   skip,
 }: {
-  user: { id: number; email: string; orgId?: number | null; role?: UserPermissionRole };
+  user: {
+    id: number;
+    email: string;
+    orgId?: number | null;
+    // omitted ⇒ no instance-admin override (API v2 callers pass none)
+    role?: UserPermissionRole;
+  };
   filters: TGetInputSchema["filters"];
   prisma: PrismaClient;
   kysely: Kysely<DB>;

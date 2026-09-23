@@ -9,6 +9,7 @@ import prisma from "@calcom/prisma";
 export const isAdminForUser = async (adminUserId: number, memberUserId: number) => {
   const adminTeamIds = await new TeamPermissionService(new MembershipRepository(prisma)).getTeamIdsWithRole({
     userId: adminUserId,
+    // Deliberately no instance-admin override: OOO is managed only by admins of the member's team.
     userRole: undefined,
     roles: TEAM_ADMIN_ROLES,
   });

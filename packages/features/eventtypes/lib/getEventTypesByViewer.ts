@@ -26,6 +26,7 @@ const log = logger.getSubLogger({ prefix: ["viewer.eventTypes.getByViewer"] });
 
 type User = {
   id: number;
+  // omitted ⇒ no instance-admin override (API v2 callers pass none)
   role?: UserPermissionRole;
   profile: {
     upId: string;
