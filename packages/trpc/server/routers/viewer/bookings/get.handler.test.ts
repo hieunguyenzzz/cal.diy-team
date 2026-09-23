@@ -194,7 +194,7 @@ describe("getBookings - team booking access", () => {
     });
 
     expect(mockPrisma.user.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { teams: { some: { teamId: { in: [10] } } } } })
+      expect.objectContaining({ where: { teams: { some: { teamId: { in: [10] }, accepted: true } } } })
     );
   });
 
