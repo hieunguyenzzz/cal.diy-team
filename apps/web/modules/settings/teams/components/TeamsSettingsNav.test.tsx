@@ -33,7 +33,7 @@ describe("TeamsSettingsNav", () => {
   });
 
   it("always links to the teams page", () => {
-    render(<TeamsSettingsNav isInstanceAdmin={false} />);
+    render(<TeamsSettingsNav />);
 
     expect(hrefs()).toEqual(["/settings/teams"]);
   });
@@ -43,7 +43,7 @@ describe("TeamsSettingsNav", () => {
       data: [team(1, "Sales", "OWNER"), team(2, "Support", "ADMIN"), team(3, "Ops", "MEMBER")],
     });
 
-    render(<TeamsSettingsNav isInstanceAdmin={false} />);
+    render(<TeamsSettingsNav />);
 
     expect(hrefs()).toEqual([
       "/settings/teams",
@@ -56,18 +56,25 @@ describe("TeamsSettingsNav", () => {
     expect(screen.queryByText("Ops")).toBeNull();
   });
 
-  it("links every team for the instance admin", () => {
-    useQuery.mockReturnValue({ data: [team(4, "Sales", null)] });
+  it("gives the instance admin children only for teams they admin or own themselves", () => {
+    useQuery.mockReturnValue({ data: [team(4, "Sales", null), team(6, "Ops", "OWNER")] });
 
-    render(<TeamsSettingsNav isInstanceAdmin />);
+    render(<TeamsSettingsNav />);
 
-    expect(hrefs()).toEqual(["/settings/teams", "/settings/teams/4/profile", "/settings/teams/4/members"]);
+    expect(hrefs()).toEqual(["/settings/teams", "/settings/teams/6/profile", "/settings/teams/6/members"]);
+    expect(screen.queryByText("Sales")).toBeNull();
+  });
+
+  it("labels the list link apart from the section header", () => {
+    render(<TeamsSettingsNav />);
+
+    expect(screen.getByRole("link").textContent).toBe("all_teams");
   });
 
   it("shows a team name with dots verbatim rather than as a translation key", () => {
     useQuery.mockReturnValue({ data: [team(5, "Sales.EU: North", "OWNER")] });
 
-    render(<TeamsSettingsNav isInstanceAdmin={false} />);
+    render(<TeamsSettingsNav />);
 
     expect(screen.getByText("Sales.EU: North")).toBeTruthy();
   });

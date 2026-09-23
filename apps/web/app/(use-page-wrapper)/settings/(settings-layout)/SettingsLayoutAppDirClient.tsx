@@ -409,8 +409,6 @@ const SettingsSidebarContainer = ({
   permissions,
 }: SettingsSidebarContainerProps) => {
   const { t } = useLocale();
-  const session = useSession();
-  const isInstanceAdmin = session.data?.user.role === UserPermissionRole.ADMIN;
 
   const tabsWithPermissions = useTabs({
     isDelegationCredentialEnabled: false,
@@ -482,7 +480,7 @@ const SettingsSidebarContainer = ({
                 </div>
               ))}
             </div>
-            {tab.name === "developer" && <TeamsSettingsNav isInstanceAdmin={isInstanceAdmin} />}
+            {tab.name === "developer" && <TeamsSettingsNav />}
           </React.Fragment>
         );
       })}

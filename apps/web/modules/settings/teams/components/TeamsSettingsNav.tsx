@@ -4,16 +4,18 @@ import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { trpc } from "@calcom/trpc/react";
 import { Icon } from "@calcom/ui/components/icon";
 import { VerticalTabItem } from "@calcom/ui/components/navigation";
-import { canManageTeam } from "../lib/canManageTeam";
+import { isTeamAdminOrOwner } from "../lib/canManageTeam";
 
 const linkClassName = "h-auto min-h-7 w-fit px-2! py-1!";
 
 // Rendered apart from the static settings tabs because team names are user data: the tab list runs every
 // name through t(), which would treat a name such as "Sales.EU" as a translation key.
-export function TeamsSettingsNav({ isInstanceAdmin }: { isInstanceAdmin: boolean }) {
+// Only teams the caller admins or owns get shortcuts. The instance admin's list carries no role of their own,
+// so they get just "All teams" and manage every team from /settings/teams instead of a flooded nav.
+export function TeamsSettingsNav() {
   const { t } = useLocale();
   const { data: teams = [] } = trpc.viewer.teams.list.useQuery();
-  const manageableTeams = teams.filter((team) => canManageTeam(team, isInstanceAdmin));
+  const manageableTeams = teams.filter(isTeamAdminOrOwner);
 
   return (
     <div className="mb-3!">
@@ -23,7 +25,7 @@ export function TeamsSettingsNav({ isInstanceAdmin }: { isInstanceAdmin: boolean
       </div>
       <div className="flex flex-col space-y-1">
         <VerticalTabItem
-          name={t("teams")}
+          name={t("all_teams")}
           href="/settings/teams"
           textClassNames="text-emphasis font-medium text-sm"
           className={linkClassName}
