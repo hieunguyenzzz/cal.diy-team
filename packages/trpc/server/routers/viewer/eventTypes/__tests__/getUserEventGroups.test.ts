@@ -213,6 +213,51 @@ describe("getUserEventGroups", () => {
         canCreateEventType: true,
       });
     });
+
+    it.each([
+      { role: MembershipRole.MEMBER, canDelete: false },
+      { role: MembershipRole.ADMIN, canDelete: true },
+      { role: MembershipRole.OWNER, canDelete: true },
+    ])("derives $role team permissions from the membership role", async ({ role, canDelete }) => {
+      const { ProfileRepository } = await import("@calcom/features/profile/repositories/ProfileRepository");
+
+      const membership = {
+        id: 1,
+        teamId: 100,
+        userId: 1,
+        accepted: true,
+        role,
+        team: {
+          id: 100,
+          name: "Test Team",
+          slug: "test-team",
+          logoUrl: null,
+          parentId: null,
+          parent: null,
+          metadata: {},
+        },
+      } as unknown as NonNullable<
+        Awaited<
+          ReturnType<
+            typeof import("@calcom/features/membership/repositories/MembershipRepository").MembershipRepository.findAllByUpIdIncludeTeam
+          >
+        >
+      >[0];
+
+      vi.mocked(ProfileRepository.findByUpIdWithAuth).mockResolvedValue(mockProfile);
+      mockFindAllByUpIdIncludeTeam.mockResolvedValue([membership]);
+      mockFilterTeamsByEventTypeReadPermission.mockResolvedValue([membership]);
+
+      const result = await getUserEventGroups({ ctx: mockCtx, input: null });
+
+      expect(result.teamPermissions[100]).toEqual({ canCreateEventType: true });
+      expect(result.eventTypeGroups.find((group) => group.teamId === 100)?.metadata.readOnly).toBe(false);
+      expect(result.profiles.find((profile) => profile.teamId === 100)).toMatchObject({
+        canCreateEventTypes: true,
+        canUpdateEventTypes: true,
+        canDeleteEventTypes: canDelete,
+      });
+    });
   });
 
   describe("Organization handling", () => {

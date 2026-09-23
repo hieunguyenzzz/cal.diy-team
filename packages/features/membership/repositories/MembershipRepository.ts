@@ -350,6 +350,7 @@ export class MembershipRepository {
       },
       select: {
         role: true,
+        accepted: true,
       },
     });
   }

@@ -1,11 +1,5 @@
+import { roleCanManageTeamEventType } from "@calcom/features/teams/services/TeamPermissionService";
 import type { Membership, Team } from "@calcom/prisma/client";
-
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
 
 type TeamMembershipWithTeam = Membership & {
   team: Team & {
@@ -21,33 +15,16 @@ type TeamMembershipWithTeam = Membership & {
 };
 
 export class TeamAccessUseCase {
-  constructor(private permissionCheckService: PermissionCheckService = new PermissionCheckService()) {}
-
   async filterTeamsByEventTypeReadPermission(
     memberships: TeamMembershipWithTeam[],
-    userId: number
+    _userId: number
   ): Promise<TeamMembershipWithTeam[]> {
-    const filteredMemberships = await Promise.all(
-      memberships.map(async (membership) => {
-        // Organization memberships are excluded from this logic
-        if (membership.team.isOrganization) {
-          return null;
-        }
-
-        // Check if user has eventType.read permission for this team
-        const hasPermission = await this.permissionCheckService.checkPermission({
-          userId,
-          teamId: membership.team.id,
-          permission: "eventType.read",
-          fallbackRoles: ["ADMIN", "OWNER", "MEMBER"], // All roles can read event types by default
-        });
-
-        return hasPermission ? membership : null;
-      })
-    );
-
-    return filteredMemberships.filter(
-      (membership): membership is TeamMembershipWithTeam => membership !== null
+    // The memberships already belong to the user, so the role on each row is all the check needs.
+    return memberships.filter(
+      (membership) =>
+        !membership.team.isOrganization &&
+        membership.accepted &&
+        roleCanManageTeamEventType(membership.role, "read")
     );
   }
 }

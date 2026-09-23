@@ -1,4 +1,6 @@
 import type { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
+import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { markdownToSafeHTML } from "@calcom/lib/markdownToSafeHTML";
 import prisma from "@calcom/prisma";
@@ -12,12 +14,6 @@ import authedProcedure from "../../../procedures/authedProcedure";
 import type { TUpdateInputSchema } from "./types";
 
 type PermissionString = string;
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
 
 type EventType = Awaited<ReturnType<EventTypeRepository["findAllByUpId"]>>[number];
 
@@ -96,13 +92,14 @@ export const eventOwnerProcedure = authedProcedure
 
 /**
  * Creates an event admin procedure with configurable permissions
- * @param permission - The specific permission required (e.g., "eventType.manage", "eventType.update")
- * @param fallbackRoles - Roles to check when PBAC is disabled (defaults to ["ADMIN", "OWNER"])
+ * @param permission - The specific permission required (e.g., "eventType.read", "eventType.update")
+ * @param _fallbackRoles - Ignored: team roles per permission are fixed by TeamPermissionService.
+ *   Kept so existing call sites compile.
  * @returns A procedure that checks the specified permission
  */
 export const createEventPbacProcedure = (
   permission: PermissionString,
-  fallbackRoles: MembershipRole[] = ["ADMIN", "OWNER"]
+  _fallbackRoles: MembershipRole[] = ["ADMIN", "OWNER"]
 ) => {
   return authedProcedure
     .input(
@@ -157,13 +154,12 @@ export const createEventPbacProcedure = (
           });
         }
       } else {
-        // Team event - check PBAC/fallback permissions
-        const permissionCheckService = new PermissionCheckService();
-        const hasPermission = await permissionCheckService.checkPermission({
+        const teamPermissionService = new TeamPermissionService(new MembershipRepository(ctx.prisma));
+        const hasPermission = await teamPermissionService.hasEventTypePermission({
           userId: ctx.user.id,
+          userRole: ctx.user.role,
           teamId: event.teamId,
           permission,
-          fallbackRoles,
         });
 
         if (!hasPermission) {
