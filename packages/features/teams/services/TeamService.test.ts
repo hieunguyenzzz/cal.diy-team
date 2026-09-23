@@ -29,6 +29,7 @@ const membershipRepository = {
   updateRole: vi.fn(),
   deleteByUserIdAndTeamId: vi.fn(),
   countAcceptedOwners: vi.fn(),
+  findByTeamIdIncludeUser: vi.fn(),
 };
 const userRepository = { findByEmail: vi.fn() };
 const uploadLogo = vi.fn();
@@ -285,9 +286,95 @@ describe("TeamService", () => {
     });
   });
 
+  describe("listMembers", () => {
+    const rows = [
+      {
+        role: MembershipRole.OWNER,
+        accepted: true,
+        user: { id: 2, name: "Ann", username: "ann", email: "ann@example.com", avatarUrl: null },
+      },
+      {
+        role: MembershipRole.MEMBER,
+        accepted: false,
+        user: { id: 3, name: "Bo", username: "bo", email: "bo@example.com", avatarUrl: "/a.png" },
+      },
+    ];
+    const withEmails = [
+      {
+        userId: 2,
+        name: "Ann",
+        username: "ann",
+        email: "ann@example.com",
+        avatarUrl: null,
+        role: MembershipRole.OWNER,
+        accepted: true,
+      },
+      {
+        userId: 3,
+        name: "Bo",
+        username: "bo",
+        email: "bo@example.com",
+        avatarUrl: "/a.png",
+        role: MembershipRole.MEMBER,
+        accepted: false,
+      },
+    ];
+
+    beforeEach(() => {
+      membershipRepository.findByTeamIdIncludeUser.mockResolvedValue(rows);
+    });
+
+    it("hides emails from a plain member", async () => {
+      givenMemberships({ 2: { role: MembershipRole.MEMBER } });
+
+      await expect(service.listMembers(actor, 10)).resolves.toEqual(
+        withEmails.map((member) => ({ ...member, email: null }))
+      );
+      expect(membershipRepository.findByTeamIdIncludeUser).toHaveBeenCalledWith({ teamId: 10 });
+    });
+
+    it.each([MembershipRole.ADMIN, MembershipRole.OWNER])("shows emails to a team %s", async (role) => {
+      givenMemberships({ 2: { role } });
+
+      await expect(service.listMembers(actor, 10)).resolves.toEqual(withEmails);
+    });
+
+    it("shows emails to the instance admin", async () => {
+      await expect(service.listMembers(instanceAdmin, 10)).resolves.toEqual(withEmails);
+    });
+
+    it("refuses non-members and pending invitees", async () => {
+      await expectError(service.listMembers(actor, 10), ErrorCode.Forbidden);
+
+      givenMemberships({ 2: { role: MembershipRole.OWNER, accepted: false } });
+      await expectError(service.listMembers(actor, 10), ErrorCode.Forbidden);
+      expect(membershipRepository.findByTeamIdIncludeUser).not.toHaveBeenCalled();
+    });
+
+    it("reports a missing or non-standalone team as not found", async () => {
+      teamRepository.findStandaloneById.mockResolvedValue(null);
+
+      await expectError(service.listMembers(instanceAdmin, 10), ErrorCode.NotFound);
+    });
+  });
+
   describe("addMemberByEmail", () => {
     beforeEach(() => {
-      userRepository.findByEmail.mockResolvedValue({ id: 5 });
+      userRepository.findByEmail.mockResolvedValue({ id: 5, locked: false });
+    });
+
+    it("rejects a locked user", async () => {
+      userRepository.findByEmail.mockResolvedValue({ id: 5, locked: true });
+
+      await expectError(
+        service.addMemberByEmail(instanceAdmin, 10, {
+          email: "locked@example.com",
+          role: MembershipRole.MEMBER,
+        }),
+        ErrorCode.BadRequest,
+        /locked/i
+      );
+      expect(membershipRepository.createAccepted).not.toHaveBeenCalled();
     });
 
     it.each([

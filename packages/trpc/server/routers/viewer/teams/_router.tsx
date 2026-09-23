@@ -1,6 +1,13 @@
 import authedProcedure from "../../../procedures/authedProcedure";
 import { router } from "../../../trpc";
-import { ZCreateTeamInputSchema, ZTeamIdInputSchema, ZUpdateTeamInputSchema } from "./teams.schema";
+import {
+  ZAddMemberInputSchema,
+  ZChangeMemberRoleInputSchema,
+  ZCreateTeamInputSchema,
+  ZTeamIdInputSchema,
+  ZTeamMemberInputSchema,
+  ZUpdateTeamInputSchema,
+} from "./teams.schema";
 
 export const teamsRouter = router({
   list: authedProcedure.query(async ({ ctx }) => {
@@ -25,6 +32,22 @@ export const teamsRouter = router({
   }),
   countUpcomingBookings: authedProcedure.input(ZTeamIdInputSchema).query(async ({ ctx, input }) => {
     const handler = (await import("./teams.handler")).countUpcomingBookingsHandler;
+    return handler({ ctx, input });
+  }),
+  listMembers: authedProcedure.input(ZTeamIdInputSchema).query(async ({ ctx, input }) => {
+    const handler = (await import("./teams.handler")).listMembersHandler;
+    return handler({ ctx, input });
+  }),
+  addMember: authedProcedure.input(ZAddMemberInputSchema).mutation(async ({ ctx, input }) => {
+    const handler = (await import("./teams.handler")).addMemberHandler;
+    return handler({ ctx, input });
+  }),
+  removeMember: authedProcedure.input(ZTeamMemberInputSchema).mutation(async ({ ctx, input }) => {
+    const handler = (await import("./teams.handler")).removeMemberHandler;
+    return handler({ ctx, input });
+  }),
+  changeMemberRole: authedProcedure.input(ZChangeMemberRoleInputSchema).mutation(async ({ ctx, input }) => {
+    const handler = (await import("./teams.handler")).changeMemberRoleHandler;
     return handler({ ctx, input });
   }),
 });

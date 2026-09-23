@@ -1,4 +1,5 @@
 import { timeZoneSchema } from "@calcom/lib/dayjs/timeZone.schema";
+import { MembershipRole } from "@calcom/prisma/enums";
 import { z } from "zod";
 
 // Strict objects: TeamService spreads the profile into the update, so parentId or isOrganization must never
@@ -31,6 +32,29 @@ export const ZUpdateTeamInputSchema = z
   })
   .strict();
 
+export const ZAddMemberInputSchema = z
+  .object({
+    teamId: z.number().int(),
+    email: z.string().trim().email(),
+    role: z.nativeEnum(MembershipRole),
+  })
+  .strict();
+
+export const ZTeamMemberInputSchema = z
+  .object({ teamId: z.number().int(), userId: z.number().int() })
+  .strict();
+
+export const ZChangeMemberRoleInputSchema = z
+  .object({
+    teamId: z.number().int(),
+    userId: z.number().int(),
+    role: z.nativeEnum(MembershipRole),
+  })
+  .strict();
+
 export type TTeamIdInputSchema = z.infer<typeof ZTeamIdInputSchema>;
 export type TCreateTeamInputSchema = z.infer<typeof ZCreateTeamInputSchema>;
 export type TUpdateTeamInputSchema = z.infer<typeof ZUpdateTeamInputSchema>;
+export type TAddMemberInputSchema = z.infer<typeof ZAddMemberInputSchema>;
+export type TTeamMemberInputSchema = z.infer<typeof ZTeamMemberInputSchema>;
+export type TChangeMemberRoleInputSchema = z.infer<typeof ZChangeMemberRoleInputSchema>;
