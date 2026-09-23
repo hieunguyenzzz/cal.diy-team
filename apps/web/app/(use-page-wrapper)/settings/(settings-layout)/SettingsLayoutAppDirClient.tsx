@@ -24,6 +24,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import type { ComponentProps } from "react";
 import React, { useEffect, useMemo, useState } from "react";
+import { TeamsSettingsNav } from "~/settings/teams/components/TeamsSettingsNav";
 import Shell from "~/shell/Shell";
 
 const getTabs = (
@@ -479,6 +480,8 @@ const SettingsSidebarContainer = ({
                 </div>
               ))}
             </div>
+            {/* Teams sit after "developer" because the organization tab that follows it is always hidden (no orgs). */}
+            {tab.name === "developer" && <TeamsSettingsNav />}
           </React.Fragment>
         );
       })}
