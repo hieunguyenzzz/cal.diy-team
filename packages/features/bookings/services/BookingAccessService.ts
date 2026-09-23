@@ -1,11 +1,12 @@
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
-import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
+import {
+  TEAM_ADMIN_ROLES,
+  TeamPermissionService,
+} from "@calcom/features/teams/services/TeamPermissionService";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import type { PrismaClient } from "@calcom/prisma";
-import { MembershipRole } from "@calcom/prisma/enums";
+import type { UserPermissionRole } from "@calcom/prisma/enums";
 import { BookingRepository } from "../repositories/BookingRepository";
-
-const TEAM_BOOKING_READER_ROLES = [MembershipRole.ADMIN, MembershipRole.OWNER];
 
 type BookingForAccessCheck = NonNullable<Awaited<ReturnType<BookingRepository["findByUidIncludeEventType"]>>>;
 
@@ -39,13 +40,13 @@ export class BookingAccessService {
   }
 
   /**
-   * Determines if a user has access to a booking based on:
-   * 1. Being the booking organizer
-   * 2. Being one of the hosts in a multi-host booking
-   * 3. Being an accepted ADMIN/OWNER of the event type's team (or of its parent team for managed events)
-   * 4. Organisation admins get no access: this fork has standalone teams only
-   * 5. Being an accepted ADMIN/OWNER of any team the booking organizer belongs to (personal bookings)
-   * The instance admin passes every team check in 3 and 5.
+   * Grants access to a booking when the user is:
+   * - the booking organizer
+   * - one of the hosts in a multi-host booking
+   * - an accepted ADMIN/OWNER of the event type's team (or of its parent team for managed events)
+   * - an accepted ADMIN/OWNER of any team the booking organizer belongs to (personal bookings)
+   * The instance admin passes both team checks. Organisation roles grant nothing: this fork has
+   * standalone teams only.
    */
   async doesUserIdHaveAccessToBooking({
     userId,
@@ -75,13 +76,23 @@ export class BookingAccessService {
     if (this.isUserAHost(userId, booking)) return true;
 
     const teamPermissionService = new TeamPermissionService(new MembershipRepository(this.prismaClient));
-    const userRole = (await userRepo.findRoleById({ id: userId }))?.role;
-    const isTeamAdmin = (teamId: number) =>
-      teamPermissionService.hasTeamRole({ userId, userRole, teamId, roles: TEAM_BOOKING_READER_ROLES });
+    // Only fetched once a team check is actually reached, and at most once.
+    let userRolePromise: Promise<UserPermissionRole | undefined> | undefined;
+    const getUserRole = () => {
+      userRolePromise ??= userRepo.findRoleById({ id: userId }).then((user) => user?.role);
+      return userRolePromise;
+    };
 
     // Case 3: team event type, or the parent team of a managed (child) event type
     const bookingTeamId = booking.eventType?.teamId ?? booking.eventType?.parent?.teamId;
-    if (bookingTeamId) return isTeamAdmin(bookingTeamId);
+    if (bookingTeamId) {
+      return teamPermissionService.hasTeamRole({
+        userId,
+        userRole: await getUserRole(),
+        teamId: bookingTeamId,
+        roles: TEAM_ADMIN_ROLES,
+      });
+    }
 
     if (!booking.userId) return false;
 
@@ -90,10 +101,14 @@ export class BookingAccessService {
     if (!bookingOwner) return false;
 
     // Case 5: Check if user is admin of any team the booking organizer belongs to
-    for (const membership of bookingOwner.teams) {
-      if (await isTeamAdmin(membership.teamId)) return true;
-    }
+    const ownerTeamIds = bookingOwner.teams.map((membership) => membership.teamId);
+    if (ownerTeamIds.length === 0) return false;
 
-    return false;
+    return teamPermissionService.hasTeamRoleInAnyTeam({
+      userId,
+      userRole: await getUserRole(),
+      teamIds: ownerTeamIds,
+      roles: TEAM_ADMIN_ROLES,
+    });
   }
 }

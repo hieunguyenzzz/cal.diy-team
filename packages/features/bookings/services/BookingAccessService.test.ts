@@ -27,12 +27,21 @@ describe("BookingAccessService", () => {
   };
   let mockMembershipRepo: {
     findRoleAndAcceptedByUserIdAndTeamId: ReturnType<typeof vi.fn>;
+    findFirstAcceptedByUserIdAndTeamIdsAndRoles: ReturnType<typeof vi.fn>;
   };
 
   // Memberships of the requesting user (123), keyed by teamId.
   const givenMemberships = (memberships: Record<number, { role: MembershipRole; accepted: boolean }>) => {
     mockMembershipRepo.findRoleAndAcceptedByUserIdAndTeamId.mockImplementation(
       async ({ teamId }: { teamId: number }) => memberships[teamId] ?? null
+    );
+    mockMembershipRepo.findFirstAcceptedByUserIdAndTeamIdsAndRoles.mockImplementation(
+      async ({ teamIds, roles }: { teamIds: number[]; roles: MembershipRole[] }) => {
+        const match = teamIds.find(
+          (teamId) => memberships[teamId]?.accepted && roles.includes(memberships[teamId].role)
+        );
+        return match === undefined ? null : { id: match };
+      }
     );
   };
 
@@ -52,13 +61,14 @@ describe("BookingAccessService", () => {
 
     mockMembershipRepo = {
       findRoleAndAcceptedByUserIdAndTeamId: vi.fn().mockResolvedValue(null),
+      findFirstAcceptedByUserIdAndTeamIdsAndRoles: vi.fn().mockResolvedValue(null),
     };
 
     vi.mocked(BookingRepository).mockImplementation(function () {
       return mockBookingRepo as any;
     });
     vi.mocked(UserRepository).mockImplementation(function () {
-      return mockUserRepo as any;
+      return mockUserRepo as unknown as UserRepository;
     });
     vi.mocked(MembershipRepository).mockImplementation(function () {
       return mockMembershipRepo as unknown as MembershipRepository;
@@ -264,6 +274,10 @@ describe("BookingAccessService", () => {
         givenMemberships({ 200: { role: MembershipRole.OWNER, accepted: true } });
 
         await expect(hasAccess()).resolves.toBe(false);
+        expect(mockMembershipRepo.findRoleAndAcceptedByUserIdAndTeamId).not.toHaveBeenCalledWith(
+          expect.objectContaining({ teamId: 200 })
+        );
+        expect(mockMembershipRepo.findFirstAcceptedByUserIdAndTeamIdsAndRoles).not.toHaveBeenCalled();
       });
     });
 
@@ -278,11 +292,17 @@ describe("BookingAccessService", () => {
         });
       });
 
-      it("denies a non-member of every team the owner belongs to", async () => {
+      it("denies a non-member of every team the owner belongs to, with a single membership query", async () => {
         givenMemberships({});
 
         await expect(hasAccess()).resolves.toBe(false);
-        expect(mockMembershipRepo.findRoleAndAcceptedByUserIdAndTeamId).toHaveBeenCalledTimes(2);
+        expect(mockMembershipRepo.findFirstAcceptedByUserIdAndTeamIdsAndRoles).toHaveBeenCalledTimes(1);
+        expect(mockMembershipRepo.findFirstAcceptedByUserIdAndTeamIdsAndRoles).toHaveBeenCalledWith({
+          userId: 123,
+          teamIds: [300, 400],
+          roles: [MembershipRole.ADMIN, MembershipRole.OWNER],
+        });
+        expect(mockMembershipRepo.findRoleAndAcceptedByUserIdAndTeamId).not.toHaveBeenCalled();
       });
 
       it("denies a MEMBER of the owner's teams", async () => {
@@ -313,12 +333,24 @@ describe("BookingAccessService", () => {
         await expect(hasAccess()).resolves.toBe(true);
       });
 
-      it("denies the instance admin when the owner belongs to no team", async () => {
+      it("denies the instance admin when the owner belongs to no team, without a role lookup", async () => {
         mockUserRepo.getUserOrganizationAndTeams.mockResolvedValue({ organizationId: null, teams: [] });
         mockUserRepo.findRoleById.mockResolvedValue({ role: UserPermissionRole.ADMIN });
 
         await expect(hasAccess()).resolves.toBe(false);
+        expect(mockUserRepo.findRoleById).not.toHaveBeenCalled();
       });
+    });
+
+    it("does not look up the caller's role for a personal booking without an owner", async () => {
+      mockBookingRepo.findByUidIncludeEventType.mockResolvedValue({
+        userId: null,
+        eventType: null,
+        attendees: [],
+      });
+
+      await expect(hasAccess()).resolves.toBe(false);
+      expect(mockUserRepo.findRoleById).not.toHaveBeenCalled();
     });
 
     it("does not look up team roles when the caller is the organizer", async () => {

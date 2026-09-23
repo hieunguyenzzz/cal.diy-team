@@ -3,6 +3,8 @@ import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 
 type TeamEventTypeAction = "create" | "read" | "update" | "delete";
 
+const TEAM_ADMIN_ROLES: readonly MembershipRole[] = [MembershipRole.ADMIN, MembershipRole.OWNER];
+
 const ALL_ROLES: readonly MembershipRole[] = [
   MembershipRole.MEMBER,
   MembershipRole.ADMIN,
@@ -13,7 +15,7 @@ const EVENT_TYPE_ACTION_ROLES: Record<TeamEventTypeAction, readonly MembershipRo
   create: ALL_ROLES,
   read: ALL_ROLES,
   update: ALL_ROLES,
-  delete: [MembershipRole.ADMIN, MembershipRole.OWNER],
+  delete: TEAM_ADMIN_ROLES,
 };
 
 // A Map rather than an object literal so inherited keys like "constructor" can never resolve to an action.
@@ -58,6 +60,26 @@ export class TeamPermissionService {
     return roles.includes(membership.role);
   }
 
+  async hasTeamRoleInAnyTeam({
+    userId,
+    userRole,
+    teamIds,
+    roles,
+  }: Omit<TeamPermissionCheck, "teamId"> & {
+    teamIds: number[];
+    roles: readonly MembershipRole[];
+  }): Promise<boolean> {
+    if (teamIds.length === 0) return false;
+    if (userRole === UserPermissionRole.ADMIN) return true;
+
+    const membership = await this.membershipRepository.findFirstAcceptedByUserIdAndTeamIdsAndRoles({
+      userId,
+      teamIds,
+      roles,
+    });
+    return !!membership;
+  }
+
   async canPerformTeamEventTypeAction({
     action,
     ...check
@@ -76,4 +98,5 @@ export class TeamPermissionService {
   }
 }
 
+export { TEAM_ADMIN_ROLES };
 export type { TeamEventTypeAction };
