@@ -1,5 +1,5 @@
 import type { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
-import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
+import { ALL_ROLES, TEAM_ADMIN_ROLES } from "@calcom/features/teams/lib/teamEventTypeRoles";
 import { validateTeamLogo } from "@calcom/features/teams/lib/validateTeamLogo";
 import type { TeamProfileUpdate, TeamRepository } from "@calcom/features/teams/repositories/TeamRepository";
 import type { UserRepository } from "@calcom/features/users/repositories/UserRepository";
@@ -32,6 +32,26 @@ const REMOVE_MEMBER_DENIED = "Only team admins can remove members";
 
 class TeamService {
   constructor(private readonly deps: ITeamServiceDeps) {}
+
+  // The instance admin manages every team, so they see all of them with sizes rather than their own roles.
+  async listTeams(actor: Actor) {
+    if (actor.userRole === UserPermissionRole.ADMIN) {
+      const teams = await this.deps.teamRepository.listStandaloneIncludeMemberCount();
+      return teams.map(({ _count, ...team }) => ({ ...team, role: null, memberCount: _count.members }));
+    }
+
+    const teams = await this.deps.teamRepository.listByMemberUserIdIncludeRole({ userId: actor.userId });
+    return teams.map(({ members, ...team }) => ({
+      ...team,
+      role: members[0]?.role ?? null,
+      memberCount: null,
+    }));
+  }
+
+  async getTeam(actor: Actor, teamId: number) {
+    await this.assertTeamRole(actor, teamId, ALL_ROLES, "Only team members can view the team");
+    return this.findTeamOrThrow(teamId);
+  }
 
   async createTeam(
     actor: Actor,

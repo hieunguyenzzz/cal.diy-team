@@ -20,6 +20,8 @@ const teamRepository = {
   findIdBySlugAmongTopLevelTeams: vi.fn(),
   deleteLogos: vi.fn(),
   countUpcomingBookings: vi.fn(),
+  listByMemberUserIdIncludeRole: vi.fn(),
+  listStandaloneIncludeMemberCount: vi.fn(),
 };
 const membershipRepository = {
   findRoleAndAcceptedByUserIdAndTeamId: vi.fn(),
@@ -66,6 +68,58 @@ describe("TeamService", () => {
     teamRepository.update.mockResolvedValue(team);
     membershipRepository.countAcceptedOwners.mockResolvedValue(2);
     givenMemberships({});
+  });
+
+  describe("listTeams", () => {
+    it("lists the caller's accepted teams with their role", async () => {
+      teamRepository.listByMemberUserIdIncludeRole.mockResolvedValue([
+        { ...team, members: [{ role: MembershipRole.ADMIN }] },
+      ]);
+
+      await expect(service.listTeams(actor)).resolves.toEqual([
+        { ...team, role: MembershipRole.ADMIN, memberCount: null },
+      ]);
+      expect(teamRepository.listByMemberUserIdIncludeRole).toHaveBeenCalledWith({ userId: 2 });
+      expect(teamRepository.listStandaloneIncludeMemberCount).not.toHaveBeenCalled();
+    });
+
+    it("lists every standalone team with member counts for the instance admin", async () => {
+      teamRepository.listStandaloneIncludeMemberCount.mockResolvedValue([
+        { ...team, _count: { members: 3 } },
+      ]);
+
+      await expect(service.listTeams(instanceAdmin)).resolves.toEqual([
+        { ...team, role: null, memberCount: 3 },
+      ]);
+      expect(teamRepository.listByMemberUserIdIncludeRole).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getTeam", () => {
+    it("returns the profile to an accepted member of any role", async () => {
+      givenMemberships({ 2: { role: MembershipRole.MEMBER } });
+
+      await expect(service.getTeam(actor, 10)).resolves.toEqual(team);
+      expect(teamRepository.findStandaloneById).toHaveBeenCalledWith({ id: 10 });
+    });
+
+    it("returns the profile to the instance admin without a membership", async () => {
+      await expect(service.getTeam(instanceAdmin, 10)).resolves.toEqual(team);
+    });
+
+    it("refuses non-members and pending invitees", async () => {
+      await expectError(service.getTeam(actor, 10), ErrorCode.Forbidden);
+
+      givenMemberships({ 2: { role: MembershipRole.ADMIN, accepted: false } });
+      await expectError(service.getTeam(actor, 10), ErrorCode.Forbidden);
+      expect(teamRepository.findStandaloneById).not.toHaveBeenCalled();
+    });
+
+    it("reports a missing or non-standalone team as not found", async () => {
+      teamRepository.findStandaloneById.mockResolvedValue(null);
+
+      await expectError(service.getTeam(instanceAdmin, 10), ErrorCode.NotFound);
+    });
   });
 
   describe("createTeam", () => {

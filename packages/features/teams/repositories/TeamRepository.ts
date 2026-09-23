@@ -104,7 +104,7 @@ export class TeamRepository {
     return this.prismaClient.team.findMany({
       where: STANDALONE_TEAM,
       orderBy: { name: "asc" },
-      select: { ...teamProfileSelect, _count: { select: { members: true } } },
+      select: { ...teamProfileSelect, _count: { select: { members: { where: { accepted: true } } } } },
     });
   }
 
