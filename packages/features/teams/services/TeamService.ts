@@ -30,7 +30,7 @@ const OWNER_ONLY: readonly MembershipRole[] = [MembershipRole.OWNER];
 
 // Only types /api/avatar can serve: it strips png/jpeg prefixes, and SVG is converted to PNG on upload.
 const LOGO_DATA_URL = /^data:image\/(png|jpeg|svg\+xml);base64,/;
-const BASE64_BODY = /^[A-Za-z0-9+/]*={0,2}$/;
+const BASE64_BODY = /^[A-Za-z0-9+/]+={0,2}$/;
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 // Capping the raw length first stops padding from shrinking the size estimate below.
 const MAX_LOGO_BASE64_LENGTH = Math.ceil(MAX_LOGO_BYTES / 3) * 4;

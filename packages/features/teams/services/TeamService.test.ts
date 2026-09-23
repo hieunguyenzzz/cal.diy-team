@@ -181,6 +181,8 @@ describe("TeamService", () => {
       ["a data URL without base64", "data:image/png,AAAA"],
       ["base64 with characters outside the alphabet", "data:image/png;base64,AA*A"],
       ["base64 with more than two padding characters", "data:image/png;base64,AAAA==="],
+      ["an empty base64 body", "data:image/png;base64,"],
+      ["a body of padding only", "data:image/png;base64,=="],
     ])("rejects %s as a logo", async (_label, logo) => {
       await expectError(service.updateTeam(instanceAdmin, 10, { logo }), ErrorCode.BadRequest, /logo/i);
       expect(uploadLogo).not.toHaveBeenCalled();
