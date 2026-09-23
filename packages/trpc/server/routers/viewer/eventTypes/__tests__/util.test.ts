@@ -24,11 +24,11 @@ describe("createEventPbacProcedure", () => {
   const runMiddleware = (
     procedure: ReturnType<typeof createEventPbacProcedure>,
     ctx: typeof mockCtx & { user: { role?: UserPermissionRole } },
-    id: number
+    input: number | { id?: number; eventTypeId?: number; users?: number[] }
   ) =>
     getMiddleware(procedure)({
       ctx,
-      input: { id },
+      input: typeof input === "number" ? { id: input } : input,
       next: mockNext,
       path: "test",
       type: "mutation",
@@ -195,7 +195,11 @@ describe("createEventPbacProcedure", () => {
       teamId: 10,
       users: [],
       team: {
-        members: [{ userId: 1 }, { userId: 2 }, { userId: 3 }],
+        members: [
+          { userId: 1, accepted: true },
+          { userId: 2, accepted: true },
+          { userId: 3, accepted: true },
+        ],
       },
     };
 
@@ -229,7 +233,7 @@ describe("createEventPbacProcedure", () => {
       teamId: 10,
       users: [],
       team: {
-        members: [{ userId: 2 }],
+        members: [{ userId: 2, accepted: true }],
       },
     };
 
@@ -316,6 +320,66 @@ describe("createEventPbacProcedure", () => {
     });
   });
 
+  describe("id and eventTypeId must identify the same event", () => {
+    const personalEvent = { id: 1, userId: 1, teamId: null, users: [{ id: 1 }], team: null };
+
+    it.each([
+      "eventType.delete",
+      "eventType.read",
+      "eventType.update",
+      "eventType.create",
+    ])("rejects %s when id and eventTypeId differ, before any lookup", async (permission) => {
+      mockPrisma.eventType.findUnique = vi.fn().mockResolvedValue(personalEvent);
+
+      await expect(
+        runMiddleware(createEventPbacProcedure(permission), mockCtx, { id: 2, eventTypeId: 1 })
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(mockNext).not.toHaveBeenCalled();
+      expect(mockPrisma.eventType.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("allows both keys when they carry the same id", async () => {
+      mockPrisma.eventType.findUnique = vi.fn().mockResolvedValue(personalEvent);
+
+      await runMiddleware(createEventPbacProcedure("eventType.delete"), mockCtx, { id: 1, eventTypeId: 1 });
+      expect(mockNext).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.eventType.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 1 } })
+      );
+    });
+  });
+
+  describe("assigned users must be accepted team members", () => {
+    const teamEvent = {
+      id: 2,
+      userId: null,
+      teamId: 10,
+      users: [],
+      team: {
+        members: [
+          { userId: 1, accepted: true },
+          { userId: 5, accepted: false },
+        ],
+      },
+    };
+
+    it("rejects assigning a member whose invite is not accepted", async () => {
+      mockPrisma.eventType.findUnique = vi.fn().mockResolvedValue(teamEvent);
+
+      await expect(
+        runMiddleware(createEventPbacProcedure("eventType.update"), mockCtx, { id: 2, users: [1, 5] })
+      ).rejects.toThrow("Cannot assign event to users outside of team membership");
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it("allows assigning accepted members", async () => {
+      mockPrisma.eventType.findUnique = vi.fn().mockResolvedValue(teamEvent);
+
+      await runMiddleware(createEventPbacProcedure("eventType.update"), mockCtx, { id: 2, users: [1] });
+      expect(mockNext).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("team events - user assignment validation", () => {
     const teamEvent = {
       id: 2,
@@ -323,7 +387,11 @@ describe("createEventPbacProcedure", () => {
       teamId: 10,
       users: [],
       team: {
-        members: [{ userId: 1 }, { userId: 2 }, { userId: 3 }],
+        members: [
+          { userId: 1, accepted: true },
+          { userId: 2, accepted: true },
+          { userId: 3, accepted: true },
+        ],
       },
     };
 
@@ -508,7 +576,7 @@ describe("createEventPbacProcedure", () => {
       teamId: 10,
       users: [],
       team: {
-        members: [{ userId: 1 }],
+        members: [{ userId: 1, accepted: true }],
       },
     };
 

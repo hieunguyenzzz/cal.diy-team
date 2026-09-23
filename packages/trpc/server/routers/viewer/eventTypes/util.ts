@@ -115,6 +115,11 @@ export const createEventPbacProcedure = (
         })
     )
     .use(async ({ ctx, input, next }) => {
+      // tRPC merges this parser with the handler's, so a handler may act on `id` while we check
+      // `eventTypeId`. Refusing a mismatch keeps the checked event and the acted-on event the same.
+      if (input.id !== undefined && input.eventTypeId !== undefined && input.id !== input.eventTypeId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "id and eventTypeId must match" });
+      }
       const id = input.eventTypeId ?? input.id;
 
       const event = await ctx.prisma.eventType.findUnique({
@@ -133,6 +138,7 @@ export const createEventPbacProcedure = (
               members: {
                 select: {
                   userId: true,
+                  accepted: true,
                 },
               },
             },
@@ -174,8 +180,10 @@ export const createEventPbacProcedure = (
       if (input.users && input.users.length > 0) {
         const isAllowed = (() => {
           if (event.team) {
-            const allTeamMembers = event.team.members.map((member) => member.userId);
-            return input.users?.every((userId: number) => allTeamMembers.includes(userId)) ?? true;
+            const acceptedMemberIds = new Set(
+              event.team.members.filter((member) => member.accepted).map((member) => member.userId)
+            );
+            return input.users?.every((userId: number) => acceptedMemberIds.has(userId)) ?? true;
           }
           return input.users?.every((userId: number) => userId === ctx.user.id) ?? true;
         })();
