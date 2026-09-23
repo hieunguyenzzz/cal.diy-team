@@ -26,6 +26,11 @@ const PERMISSION_TO_ACTION = new Map<string, TeamEventTypeAction>([
   ["eventType.delete", "delete"],
 ]);
 
+// Team-scoped permissions checked by role alone (no event-type action); unknown permissions get no roles.
+const PERMISSION_TEAM_ROLES = new Map<string, readonly MembershipRole[]>([
+  ["webhook.create", TEAM_ADMIN_ROLES],
+]);
+
 type TeamPermissionCheck = {
   userId: number;
   userRole: UserPermissionRole | null | undefined;
@@ -34,6 +39,10 @@ type TeamPermissionCheck = {
 
 export function toTeamEventTypeAction(permission: string): TeamEventTypeAction | null {
   return PERMISSION_TO_ACTION.get(permission) ?? null;
+}
+
+export function rolesForTeamPermission(permission: string): readonly MembershipRole[] {
+  return PERMISSION_TEAM_ROLES.get(permission) ?? [];
 }
 
 export function roleAllowsTeamEventTypeAction(role: MembershipRole, action: TeamEventTypeAction): boolean {
@@ -78,6 +87,20 @@ export class TeamPermissionService {
       roles,
     });
     return !!membership;
+  }
+
+  async getTeamIdsWithRole({
+    userId,
+    userRole,
+    roles,
+  }: Omit<TeamPermissionCheck, "teamId"> & { roles: readonly MembershipRole[] }): Promise<number[]> {
+    // The instance admin acts as an admin in every team they have an accepted membership in.
+    const effectiveRoles = userRole === UserPermissionRole.ADMIN ? ALL_ROLES : roles;
+    const memberships = await this.membershipRepository.findAcceptedTeamIdsByUserIdAndRoles({
+      userId,
+      roles: effectiveRoles,
+    });
+    return memberships.map((membership) => membership.teamId);
   }
 
   async canPerformTeamEventTypeAction({
