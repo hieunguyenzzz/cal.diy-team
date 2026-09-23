@@ -39,7 +39,8 @@ export const createHandler = async ({ ctx, input }: CreateOptions) => {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
 
-  if (!input.platform && !input.eventTypeId) {
+  // Team webhooks belong to the team only; Prisma also rejects a scalar teamId next to a user connect.
+  if (!input.platform && !input.eventTypeId && !input.teamId) {
     webhookData.user = { connect: { id: user.id } };
   }
 
