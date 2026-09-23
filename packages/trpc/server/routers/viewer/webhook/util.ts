@@ -1,3 +1,8 @@
+import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
+import {
+  TEAM_ADMIN_ROLES,
+  TeamPermissionService,
+} from "@calcom/features/teams/services/TeamPermissionService";
 import { prisma } from "@calcom/prisma";
 
 import { TRPCError } from "@trpc/server";
@@ -9,8 +14,25 @@ export const createWebhookProcedure = () => {
   return authedProcedure.input(webhookIdAndEventTypeIdSchema.optional()).use(async ({ ctx, input, next }) => {
     if (!input) return next();
 
-    const { id, webhookId, eventTypeId } = input;
+    const { id, webhookId, eventTypeId, teamId } = input;
     const lookupId = id || webhookId;
+
+    const assertTeamAdmin = async (webhookTeamId: number) => {
+      const isTeamAdmin = await new TeamPermissionService(new MembershipRepository(prisma)).hasTeamRole({
+        userId: ctx.user.id,
+        userRole: ctx.user.role,
+        teamId: webhookTeamId,
+        roles: TEAM_ADMIN_ROLES,
+      });
+      if (!isTeamAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
+    };
+
+    // Covers create and any call naming a team: only that team's admins may act for it.
+    if (teamId) {
+      await assertTeamAdmin(teamId);
+    }
 
     if (lookupId) {
       // Check if user is authorized to edit webhook
@@ -20,6 +42,7 @@ export const createWebhookProcedure = () => {
           id: true,
           userId: true,
           eventTypeId: true,
+          teamId: true,
         },
       });
 
@@ -44,6 +67,8 @@ export const createWebhookProcedure = () => {
         if (eventType.userId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN" });
         }
+      } else if (webhook.teamId) {
+        await assertTeamAdmin(webhook.teamId);
       } else if (webhook.userId && webhook.userId !== ctx.user.id) {
         throw new TRPCError({ code: "FORBIDDEN" });
       }
