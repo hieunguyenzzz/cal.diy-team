@@ -109,8 +109,11 @@ describe("webhookProcedure", () => {
       givenWebhook({ userId: null, eventTypeId: null, teamId: null, platform: true });
     });
 
-    it("rejects a non-admin, as edit.handler does", async () => {
-      await expect(runProcedure({ id: "wh-1" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    it("rejects a non-admin", async () => {
+      await expect(runProcedure({ id: "wh-1" })).rejects.toMatchObject({
+        code: "FORBIDDEN",
+        message: "Only instance admins can manage platform webhooks",
+      });
       expect(mockNext).not.toHaveBeenCalled();
     });
 

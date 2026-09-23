@@ -4,9 +4,7 @@ import {
   TeamPermissionService,
 } from "@calcom/features/teams/services/TeamPermissionService";
 import { prisma } from "@calcom/prisma";
-
 import { TRPCError } from "@trpc/server";
-
 import authedProcedure from "../../../procedures/authedProcedure";
 import { webhookIdAndEventTypeIdSchema } from "./types";
 
@@ -17,8 +15,9 @@ export const createWebhookProcedure = () => {
     const { id, webhookId, eventTypeId, teamId } = input;
     const lookupId = id || webhookId;
 
+    const teamPermissionService = new TeamPermissionService(new MembershipRepository(prisma));
     const assertTeamAdmin = async (webhookTeamId: number) => {
-      const isTeamAdmin = await new TeamPermissionService(new MembershipRepository(prisma)).hasTeamRole({
+      const isTeamAdmin = await teamPermissionService.hasTeamRole({
         userId: ctx.user.id,
         userRole: ctx.user.role,
         teamId: webhookTeamId,
@@ -51,9 +50,12 @@ export const createWebhookProcedure = () => {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
 
-      // Same rule as edit.handler, applied here so get and testTrigger are covered too.
+      // Checked here so get and testTrigger are covered too, not only edit.
       if (webhook.platform && ctx.user.role !== "ADMIN") {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only instance admins can manage platform webhooks",
+        });
       }
 
       if (eventTypeId && eventTypeId !== webhook.eventTypeId) {
