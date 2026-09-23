@@ -6,8 +6,9 @@ import { createHandler } from "./create.handler";
 // Runs the real handler against the dev database: Prisma must accept a team webhook without a user link.
 describe("createHandler (DB)", () => {
   const suffix = `sbs578-${Date.now()}`;
-  let userId: number;
-  let teamId: number;
+  let userId: number | undefined;
+  let teamId: number | undefined;
+  const createdWebhookIds: string[] = [];
 
   beforeAll(async () => {
     const user = await prisma.user.create({
@@ -22,10 +23,17 @@ describe("createHandler (DB)", () => {
     teamId = team.id;
   });
 
+  // Delete only what this test created: an undefined id in a broad filter would match every row.
   afterAll(async () => {
-    await prisma.webhook.deleteMany({ where: { OR: [{ teamId }, { userId }] } });
-    await prisma.team.delete({ where: { id: teamId } });
-    await prisma.user.delete({ where: { id: userId } });
+    if (createdWebhookIds.length > 0) {
+      await prisma.webhook.deleteMany({ where: { id: { in: createdWebhookIds } } });
+    }
+    if (teamId !== undefined) {
+      await prisma.team.delete({ where: { id: teamId } });
+    }
+    if (userId !== undefined) {
+      await prisma.user.delete({ where: { id: userId } });
+    }
   });
 
   const ctx = () => ({ user: { id: userId, role: "USER" } as unknown as NonNullable<TrpcSessionUser> });
@@ -41,6 +49,7 @@ describe("createHandler (DB)", () => {
         teamId,
       },
     });
+    createdWebhookIds.push(webhook.id);
 
     expect(webhook).toMatchObject({ teamId, userId: null, eventTypeId: null });
   });
@@ -55,6 +64,7 @@ describe("createHandler (DB)", () => {
         payloadTemplate: null,
       },
     });
+    createdWebhookIds.push(webhook.id);
 
     expect(webhook).toMatchObject({ teamId: null, userId });
   });
