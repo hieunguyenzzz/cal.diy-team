@@ -8,8 +8,12 @@ vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>,
 }));
 // Radix menus only render their content when opened; render it inline so the options can be asserted.
+const { dropdownProps } = vi.hoisted(() => ({ dropdownProps: [] as { modal?: boolean }[] }));
 vi.mock("@calcom/ui/components/dropdown", () => ({
-  Dropdown: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Dropdown: ({ children, ...props }: { children: ReactNode; modal?: boolean }) => {
+    dropdownProps.push(props);
+    return <div>{children}</div>;
+  },
   DropdownMenuTrigger: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DropdownMenuContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DropdownMenuLabel: ({ children }: { children: ReactNode }) => <p>{children}</p>,
@@ -49,5 +53,13 @@ describe("NewEventTypeButton", () => {
     expect(screen.getByText("create_event_on")).toBeTruthy();
     expect(hrefs()).toEqual(["?dialog=new&eventPage=ann", "?dialog=new&eventPage=sales&teamId=10"]);
     expect(screen.getByText("Sales")).toBeTruthy();
+  });
+
+  // Each option opens the create dialog; a modal menu hands off to it and leaves the page unclickable
+  // (body pointer-events: none) after the dialog closes, as seen in the browser.
+  it("keeps the menu non-modal so the dialog it opens doesn't lock the page", () => {
+    render(<NewEventTypeButton profileOptions={[personal, team]} />);
+
+    expect(dropdownProps.at(-1)).toEqual({ modal: false });
   });
 });

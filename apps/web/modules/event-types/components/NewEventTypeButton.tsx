@@ -26,7 +26,7 @@ export function NewEventTypeButton({ profileOptions }: { profileOptions: Profile
   }
 
   return (
-    <Dropdown>
+    <Dropdown modal={false}>
       <DropdownMenuTrigger asChild>
         <Button data-testid="new-event-type" EndIcon="chevron-down">
           {t("new")}

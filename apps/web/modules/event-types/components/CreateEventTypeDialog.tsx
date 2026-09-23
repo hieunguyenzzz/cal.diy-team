@@ -138,7 +138,9 @@ export function CreateEventTypeDialog({ profileOptions }: { profileOptions: Prof
             form={form}
             isManagedEventType={isManagedEventType}
             handleSubmit={(values) => {
-              createMutation.mutate(values);
+              // The form is shared with the team path, which sets these; a personal event type must not keep them.
+              const { teamId: _teamId, schedulingType: _schedulingType, ...personalValues } = values;
+              createMutation.mutate(personalValues);
             }}
             SubmitButton={SubmitButton}
             pageSlug={pageSlug}
