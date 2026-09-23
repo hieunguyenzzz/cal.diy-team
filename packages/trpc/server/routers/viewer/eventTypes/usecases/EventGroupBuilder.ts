@@ -1,5 +1,6 @@
 import type { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import type { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
+import type { UserPermissionRole } from "@calcom/prisma/enums";
 import { teamMetadataSchema } from "@calcom/prisma/zod-utils";
 
 import type { TeamAccessUseCase } from "../teamAccessUseCase";
@@ -20,6 +21,7 @@ export interface EventGroupBuilderDependencies {
 
 export interface EventGroupBuilderInput {
   userId: number;
+  userRole?: UserPermissionRole | null;
   userUpId: string;
   filters?: FilterContext["filters"];
 }
@@ -31,7 +33,7 @@ export class EventGroupBuilder {
     eventTypeGroups: EventTypeGroup[];
     teamPermissionsMap: Map<number, TeamPermissions>;
   }> {
-    const { userId, userUpId, filters } = input;
+    const { userId, userRole, userUpId, filters } = input;
 
     // Get user profile with authorization check
     const profile = await this.dependencies.profileRepository.findByUpIdWithAuth(userUpId, userId);
@@ -71,7 +73,7 @@ export class EventGroupBuilder {
     }));
 
     // Build permissions map
-    const teamPermissionsMap = buildTeamPermissionsMap(memberships, teamMemberships);
+    const teamPermissionsMap = buildTeamPermissionsMap(memberships, teamMemberships, userRole);
 
     // Build event type groups
     const eventTypeGroups: EventTypeGroup[] = [];

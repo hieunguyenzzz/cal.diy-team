@@ -44,6 +44,7 @@ export const getUserEventGroups = async ({ ctx, input }: GetByViewerOptions) => 
   const eventGroupBuilder = new EventGroupBuilder(dependencies);
   const { eventTypeGroups, teamPermissionsMap } = await eventGroupBuilder.buildEventGroups({
     userId: user.id,
+    userRole: user.role,
     userUpId: userProfile.upId,
     filters: input?.filters,
   });
