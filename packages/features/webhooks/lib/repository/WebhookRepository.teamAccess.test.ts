@@ -2,7 +2,7 @@ import prismaMock from "@calcom/testing/lib/__mocks__/prismaMock";
 import type { IEventTypesRepository } from "@calcom/features/eventtypes/eventtypes.repository.interface";
 import type { IUsersRepository } from "@calcom/features/users/users.repository.interface";
 import type { PrismaClient } from "@calcom/prisma";
-import { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
+import { MembershipRole } from "@calcom/prisma/enums";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WebhookRepository } from "./WebhookRepository";
 
@@ -13,11 +13,12 @@ vi.mock("@calcom/prisma", () => ({
 
 type Result<T extends (...args: never[]) => unknown> = Awaited<ReturnType<T>>;
 
-const findUserTeams = vi.fn();
 const eventTypeRepository = { findParentEventTypeId: vi.fn() } as unknown as IEventTypesRepository;
-const repository = new WebhookRepository(prismaMock as unknown as PrismaClient, eventTypeRepository, {
-  findUserTeams,
-} as unknown as IUsersRepository);
+const repository = new WebhookRepository(
+  prismaMock as unknown as PrismaClient,
+  eventTypeRepository,
+  {} as unknown as IUsersRepository
+);
 
 const webhook = (id: string, teamId: number | null) => ({
   id,
@@ -49,7 +50,8 @@ const teamMembership = (teamId: number, role: MembershipRole) => ({
   },
 });
 
-describe("WebhookRepository team access", () => {
+// Access policy lives in TeamPermissionService; the repository only filters by the team ids it is given.
+describe("WebhookRepository team filtering", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     prismaMock.webhook.findMany.mockResolvedValue([]);
@@ -71,8 +73,12 @@ describe("WebhookRepository team access", () => {
       } as unknown as Result<typeof prismaMock.user.findUnique>);
     });
 
-    it("shows team webhooks only for teams the caller administers", async () => {
-      const { webhookGroups, profiles } = await repository.getFilteredWebhooksForUser({ userId: 1 });
+    it("builds team groups only for the given team ids, all modifiable and deletable", async () => {
+      const { webhookGroups, profiles } = await repository.getFilteredWebhooksForUser({
+        userId: 1,
+        teamIds: [20, 30],
+        includePlatformWebhooks: false,
+      });
 
       const flagsByTeam = Object.fromEntries(
         webhookGroups.map((group) => [String(group.teamId), group.metadata])
@@ -83,18 +89,27 @@ describe("WebhookRepository team access", () => {
         30: { canModify: true, canDelete: true },
       });
       expect(profiles.map((profile) => profile.teamId)).toEqual([null, 20, 30]);
+      const webhookIds = webhookGroups.flatMap((group) => group.webhooks.map((hook) => hook.id));
+      expect(webhookIds).not.toContain("t10");
+      expect(webhookIds).toEqual(["mine", "t20", "t30"]);
+      expect(prismaMock.webhook.findMany).not.toHaveBeenCalled();
     });
 
-    it("lets the instance admin modify and delete every team's webhooks", async () => {
+    it("adds the platform group only when asked to", async () => {
+      prismaMock.webhook.findMany.mockResolvedValue([
+        { ...webhook("platform-hook", null), userId: null, platform: true },
+      ] as unknown as Result<typeof prismaMock.webhook.findMany>);
+
       const { webhookGroups } = await repository.getFilteredWebhooksForUser({
         userId: 1,
-        userRole: UserPermissionRole.ADMIN,
+        teamIds: [],
+        includePlatformWebhooks: true,
       });
 
-      expect(webhookGroups.find((group) => group.teamId === 10)?.metadata).toEqual({
-        canModify: true,
-        canDelete: true,
-      });
+      expect(prismaMock.webhook.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { platform: true } })
+      );
+      expect(webhookGroups.map((group) => group.profile.name)).toEqual(["Me", "Platform"]);
     });
   });
 
@@ -102,14 +117,13 @@ describe("WebhookRepository team access", () => {
     const listWhere = () => prismaMock.webhook.findMany.mock.calls[0][0]?.where;
 
     it("returns a managed child's inherited parent webhooks without their secret", async () => {
-      findUserTeams.mockResolvedValue({ teams: [] });
       vi.mocked(eventTypeRepository.findParentEventTypeId).mockResolvedValue(500);
       prismaMock.webhook.findMany.mockResolvedValue([
         { ...webhook("child", null), eventTypeId: 42, secret: "child-secret" },
         { ...webhook("parent", null), eventTypeId: 500, secret: "parent-secret" },
       ] as unknown as Result<typeof prismaMock.webhook.findMany>);
 
-      const webhooks = await repository.listWebhooks({ userId: 1, eventTypeId: 42 });
+      const webhooks = await repository.listWebhooks({ userId: 1, teamIds: [], eventTypeId: 42 });
 
       expect(webhooks.map((hook) => [hook.id, hook.secret])).toEqual([
         ["child", "child-secret"],
@@ -117,41 +131,19 @@ describe("WebhookRepository team access", () => {
       ]);
     });
 
-    it("includes only teams where the caller is an accepted ADMIN/OWNER", async () => {
-      findUserTeams.mockResolvedValue({ teams: [{ teamId: 10 }, { teamId: 20 }] });
-      prismaMock.membership.findMany.mockResolvedValue([{ teamId: 20 }] as unknown as Result<
-        typeof prismaMock.membership.findMany
-      >);
+    it("puts the given team ids into the where", async () => {
+      await repository.listWebhooks({ userId: 1, teamIds: [20, 30] });
 
-      await repository.listWebhooks({ userId: 1 });
-
-      expect(prismaMock.membership.findMany).toHaveBeenCalledWith({
-        where: { userId: 1, accepted: true, role: { in: [MembershipRole.ADMIN, MembershipRole.OWNER] } },
-        select: { teamId: true },
-      });
       expect(listWhere()).toEqual({
-        AND: [{ appId: null }, { OR: [{ userId: 1 }, { teamId: { in: [20] } }] }],
+        AND: [{ appId: null }, { OR: [{ userId: 1 }, { teamId: { in: [20, 30] } }] }],
       });
+      expect(prismaMock.membership.findMany).not.toHaveBeenCalled();
     });
 
-    it("includes no team webhooks for a plain member", async () => {
-      findUserTeams.mockResolvedValue({ teams: [{ teamId: 10 }] });
-      prismaMock.membership.findMany.mockResolvedValue([]);
-
-      await repository.listWebhooks({ userId: 1 });
+    it("keeps only the user's own webhooks when no team ids are given", async () => {
+      await repository.listWebhooks({ userId: 1, teamIds: [] });
 
       expect(listWhere()).toEqual({ AND: [{ appId: null }, { OR: [{ userId: 1 }] }] });
-    });
-
-    it("includes all of the instance admin's teams", async () => {
-      findUserTeams.mockResolvedValue({ teams: [{ teamId: 10 }, { teamId: 20 }] });
-
-      await repository.listWebhooks({ userId: 1, userRole: UserPermissionRole.ADMIN });
-
-      expect(prismaMock.membership.findMany).not.toHaveBeenCalled();
-      expect(listWhere()).toEqual({
-        AND: [{ appId: null }, { OR: [{ userId: 1 }, { teamId: { in: [10, 20] } }] }],
-      });
     });
   });
 });

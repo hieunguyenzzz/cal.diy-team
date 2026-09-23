@@ -1,6 +1,5 @@
 import type { IEventTypesRepository } from "@calcom/features/eventtypes/eventtypes.repository.interface";
 import { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
-import { TEAM_ADMIN_ROLES } from "@calcom/features/teams/services/TeamPermissionService";
 import { UsersRepository } from "@calcom/features/users/users.repository";
 import type { IUsersRepository } from "@calcom/features/users/users.repository.interface";
 import { getPlaceholderAvatar } from "@calcom/lib/defaultAvatarImage";
@@ -9,7 +8,6 @@ import type { PrismaClient } from "@calcom/prisma";
 import { prisma as defaultPrisma } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
 import type { TimeUnit, WebhookTriggerEvents } from "@calcom/prisma/enums";
-import { UserPermissionRole } from "@calcom/prisma/enums";
 import type { Webhook, WebhookGroup, WebhookSubscriber } from "../dto/types";
 import { WebhookOutputMapper } from "../infrastructure/mappers/WebhookOutputMapper";
 import type {
@@ -310,7 +308,15 @@ export class WebhookRepository implements IWebhookRepository {
     }));
   }
 
-  async getFilteredWebhooksForUser({ userId, userRole }: { userId: number; userRole?: UserPermissionRole }) {
+  async getFilteredWebhooksForUser({
+    userId,
+    teamIds,
+    includePlatformWebhooks,
+  }: {
+    userId: number;
+    teamIds: number[];
+    includePlatformWebhooks: boolean;
+  }) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -399,10 +405,9 @@ export class WebhookRepository implements IWebhookRepository {
       },
     });
 
-    // Team webhooks (secrets included) are for team admins only; user.teams holds accepted memberships.
+    const visibleTeamIds = new Set(teamIds);
     for (const membership of user.teams) {
-      const isTeamAdmin = userRole === UserPermissionRole.ADMIN || TEAM_ADMIN_ROLES.includes(membership.role);
-      if (!isTeamAdmin) continue;
+      if (!visibleTeamIds.has(membership.team.id)) continue;
 
       webhookGroups.push({
         teamId: membership.team.id,
@@ -420,7 +425,7 @@ export class WebhookRepository implements IWebhookRepository {
     }
 
     // Add platform webhooks for admins
-    if (userRole === UserPermissionRole.ADMIN) {
+    if (includePlatformWebhooks) {
       const platformWebhooks = await this.prisma.webhook.findMany({
         where: { platform: true },
         select: {
@@ -477,15 +482,13 @@ export class WebhookRepository implements IWebhookRepository {
    * - Permission-based team filtering
    */
   async listWebhooks(options: ListWebhooksOptions): Promise<Webhook[]> {
-    const { userId, userRole, appId, eventTypeId, eventTriggers } = options;
+    const { userId, teamIds, appId, eventTypeId, eventTriggers } = options;
 
     // Build WHERE conditions
     const whereConditions: NonNullable<Prisma.WebhookWhereInput["AND"]> = [
       // AppId filter - null appId by default (excludes zapier/make)
       { appId: appId ?? null },
     ];
-
-    const user = await this.userRepository.findUserTeams(userId);
 
     let managedParentId: number | null | undefined;
     if (eventTypeId) {
@@ -500,19 +503,9 @@ export class WebhookRepository implements IWebhookRepository {
         whereConditions.push({ eventTypeId });
       }
     } else {
-      // No eventTypeId - the user's own webhooks plus those of teams they administer
-      const allowedTeamIds =
-        userRole === UserPermissionRole.ADMIN
-          ? (user?.teams?.map((m) => m.teamId) ?? [])
-          : (
-              await this.prisma.membership.findMany({
-                where: { userId, accepted: true, role: { in: [...TEAM_ADMIN_ROLES] } },
-                select: { teamId: true },
-              })
-            ).map((membership) => membership.teamId);
-
+      // No eventTypeId - the user's own webhooks plus those of the given teams
       whereConditions.push({
-        OR: [{ userId }, ...(allowedTeamIds.length ? [{ teamId: { in: allowedTeamIds } }] : [])],
+        OR: [{ userId }, ...(teamIds.length ? [{ teamId: { in: teamIds } }] : [])],
       });
     }
 

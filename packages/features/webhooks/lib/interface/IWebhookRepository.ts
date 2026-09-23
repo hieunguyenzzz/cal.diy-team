@@ -1,4 +1,4 @@
-import type { UserPermissionRole, WebhookTriggerEvents } from "@calcom/prisma/enums";
+import type { WebhookTriggerEvents } from "@calcom/prisma/enums";
 import type { Webhook, WebhookGroup, WebhookSubscriber } from "../dto/types";
 
 /**
@@ -48,7 +48,8 @@ export interface GetSubscribersOptions {
 
 export interface ListWebhooksOptions {
   userId: number;
-  userRole?: UserPermissionRole;
+  // Teams whose webhooks the caller may see; the caller works this out, the repository only filters.
+  teamIds: number[];
   appId?: string | null;
   eventTypeId?: number | null;
   eventTriggers?: WebhookTriggerEvents[];
@@ -75,7 +76,11 @@ export interface IWebhookRepository {
     orgId: number;
     triggerEvent: WebhookTriggerEvents;
   }): Promise<WebhookSubscriber[]>;
-  getFilteredWebhooksForUser(options: { userId: number; userRole?: UserPermissionRole }): Promise<{
+  getFilteredWebhooksForUser(options: {
+    userId: number;
+    teamIds: number[];
+    includePlatformWebhooks: boolean;
+  }): Promise<{
     webhookGroups: WebhookGroup[];
     profiles: {
       teamId: number | null | undefined;
