@@ -194,4 +194,15 @@ describe("EventTeamAssignmentTab", () => {
 
     expect(screen.getByTestId("weights-state").textContent).toBe("weightsOn=true weights=1=100,2=0");
   });
+
+  it("shows an error when weights are on and every round-robin host is at 0", () => {
+    render(<Harness schedulingType="ROUND_ROBIN" />);
+    fireEvent.click(screen.getByTestId("rr-weights-switch"));
+    fireEvent.click(within(screen.getByTestId("rr-hosts-select")).getByText("add Bo"));
+    expect(screen.queryByText("rr_weights_need_one_above_zero")).toBeNull();
+
+    fireEvent.click(within(screen.getByTestId("rr-hosts-select")).getByText("zero weight Bo"));
+
+    expect(screen.getByText("rr_weights_need_one_above_zero")).toBeTruthy();
+  });
 });

@@ -1,5 +1,6 @@
 import { checkForEmptyAssignment } from "@calcom/features/eventtypes/lib/checkForEmptyAssignment";
 import { DEFAULT_HOST_PRIORITY, DEFAULT_HOST_WEIGHT } from "@calcom/features/eventtypes/lib/hostDefaults";
+import { hasOnlyZeroWeightRoundRobinHosts } from "@calcom/features/eventtypes/lib/roundRobinWeights";
 import type {
   EventTypeSetupProps,
   FormValues,
@@ -135,6 +136,11 @@ const RoundRobinHosts = ({
   const { t } = useLocale();
   const { control, getValues, setValue } = useFormContext<FormValues>();
   const isRRWeightsEnabled = useWatch({ control, name: "isRRWeightsEnabled" });
+  // The form's resolver blocks the save in this state; this explains why.
+  const allWeightsZero = hasOnlyZeroWeightRoundRobinHosts({
+    isRRWeightsEnabled: !!isRRWeightsEnabled,
+    hosts: value,
+  });
 
   return (
     <div className="mt-5 rounded-lg" data-testid="rr-hosts">
@@ -154,6 +160,9 @@ const RoundRobinHosts = ({
             )}
           />
         </div>
+        {allWeightsZero && (
+          <Alert className="mt-4" severity="error" title={t("rr_weights_need_one_above_zero")} />
+        )}
         <AddMembersWithSwitch
           isRRWeightsEnabled={!!isRRWeightsEnabled}
           data-testid="rr-hosts-select"

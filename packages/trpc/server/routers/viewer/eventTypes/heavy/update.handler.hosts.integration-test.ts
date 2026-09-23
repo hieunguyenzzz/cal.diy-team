@@ -151,6 +151,46 @@ describe("updateHandler hosts (DB)", () => {
     ]);
   });
 
+  // getLuckyUser throws when every round-robin weight is 0, which would turn every booking into a 500.
+  it("refuses weights where every round-robin host is at 0", async () => {
+    await expect(
+      updateHandler({
+        ctx: asOwner(),
+        input: {
+          id: eventTypeId as number,
+          schedulingType: SchedulingType.ROUND_ROBIN,
+          isRRWeightsEnabled: true,
+          hosts: [
+            { userId: owner.id, isFixed: true, priority: 2, weight: 100 },
+            { userId: member.id, isFixed: false, priority: 2, weight: 0 },
+          ],
+        },
+      })
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "At least one round-robin host needs a weight above 0",
+    });
+  });
+
+  it("refuses turning weights on when the saved round-robin hosts are all at 0", async () => {
+    await updateHandler({
+      ctx: asOwner(),
+      input: {
+        id: eventTypeId as number,
+        schedulingType: SchedulingType.ROUND_ROBIN,
+        isRRWeightsEnabled: false,
+        hosts: [
+          { userId: owner.id, isFixed: false, priority: 2, weight: 0 },
+          { userId: member.id, isFixed: false, priority: 2, weight: 0 },
+        ],
+      },
+    });
+
+    await expect(
+      updateHandler({ ctx: asOwner(), input: { id: eventTypeId as number, isRRWeightsEnabled: true } })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
   it("refuses a host who is not an accepted member of the team", async () => {
     await expect(
       updateHandler({

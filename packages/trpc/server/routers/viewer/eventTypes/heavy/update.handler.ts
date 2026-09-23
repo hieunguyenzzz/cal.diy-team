@@ -5,6 +5,7 @@ import { CalVideoSettingsRepository } from "@calcom/features/calVideoSettings/re
 import { CredentialRepository } from "@calcom/features/credentials/repositories/CredentialRepository";
 import { HashedLinkRepository } from "@calcom/features/hashedLink/lib/repository/HashedLinkRepository";
 import { HashedLinkService } from "@calcom/features/hashedLink/lib/service/HashedLinkService";
+import { hasOnlyZeroWeightRoundRobinHosts } from "@calcom/features/eventtypes/lib/roundRobinWeights";
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
 import { ScheduleRepository } from "@calcom/features/schedules/repositories/ScheduleRepository";
 import tasker from "@calcom/features/tasker";
@@ -121,6 +122,7 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
         },
       },
       isRRWeightsEnabled: true,
+      schedulingType: true,
       hosts: {
         select: {
           userId: true,
@@ -190,6 +192,24 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
   const teamId = eventType.team?.id;
   if (inputTeamId != null && inputTeamId !== teamId) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Event type cannot be moved to another team" });
+  }
+
+  // Checked against the values the event will have after this update, since either side may change alone.
+  const finalSchedulingType =
+    input.schedulingType === undefined ? eventType.schedulingType : input.schedulingType;
+  if (
+    hasOnlyZeroWeightRoundRobinHosts({
+      isRRWeightsEnabled: isRRWeightsEnabled ?? eventType.isRRWeightsEnabled,
+      hosts: (hosts ?? eventType.hosts).map((host) => ({
+        isFixed: finalSchedulingType === SchedulingType.COLLECTIVE || !!host.isFixed,
+        weight: host.weight,
+      })),
+    })
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "At least one round-robin host needs a weight above 0",
+    });
   }
 
   const finalSeatsPerTimeSlot =

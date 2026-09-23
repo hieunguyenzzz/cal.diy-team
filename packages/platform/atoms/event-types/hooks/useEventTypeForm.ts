@@ -2,6 +2,7 @@ import checkForMultiplePaymentApps from "@calcom/app-store/_utils/payments/check
 import { locationsResolver } from "@calcom/app-store/locations";
 import { stripChildrenForPayload } from "@calcom/features/eventtypes/lib/childrenEventType";
 import { validateCustomEventName } from "@calcom/features/eventtypes/lib/eventNaming";
+import { hasOnlyZeroWeightRoundRobinHosts } from "@calcom/features/eventtypes/lib/roundRobinWeights";
 import type {
   EventTypeSetupProps,
   EventTypeUpdateInput,
@@ -11,6 +12,7 @@ import { sortHosts } from "@calcom/lib/bookings/hostGroupUtils";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { validateIntervalLimitOrder } from "@calcom/lib/intervalLimits/validateIntervalLimitOrder";
 import { validateBookerLayouts } from "@calcom/lib/validateBookerLayouts";
+import { SchedulingType } from "@calcom/prisma/enums";
 import { eventTypeBookingFields as eventTypeBookingFieldsSchema } from "@calcom/prisma/zod-utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useMemo, useState } from "react";
@@ -183,6 +185,26 @@ export const useEventTypeForm = ({
         })
         // TODO: Add schema for other fields later.
         .passthrough()
+        .superRefine((_values, ctx) => {
+          // The server refuses this too; catching it here keeps the save from failing after the click.
+          const collective = form.getValues("schedulingType") === SchedulingType.COLLECTIVE;
+          const hosts = (form.getValues("hosts") ?? []).map((host) => ({
+            isFixed: collective || host.isFixed,
+            weight: host.weight,
+          }));
+          if (
+            hasOnlyZeroWeightRoundRobinHosts({
+              isRRWeightsEnabled: !!form.getValues("isRRWeightsEnabled"),
+              hosts,
+            })
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["hosts"],
+              message: t("rr_weights_need_one_above_zero"),
+            });
+          }
+        })
     ),
   });
 
