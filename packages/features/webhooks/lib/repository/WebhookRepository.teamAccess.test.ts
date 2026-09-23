@@ -14,11 +14,10 @@ vi.mock("@calcom/prisma", () => ({
 type Result<T extends (...args: never[]) => unknown> = Awaited<ReturnType<T>>;
 
 const findUserTeams = vi.fn();
-const repository = new WebhookRepository(
-  prismaMock as unknown as PrismaClient,
-  { findParentEventTypeId: vi.fn() } as unknown as IEventTypesRepository,
-  { findUserTeams } as unknown as IUsersRepository
-);
+const eventTypeRepository = { findParentEventTypeId: vi.fn() } as unknown as IEventTypesRepository;
+const repository = new WebhookRepository(prismaMock as unknown as PrismaClient, eventTypeRepository, {
+  findUserTeams,
+} as unknown as IUsersRepository);
 
 const webhook = (id: string, teamId: number | null) => ({
   id,
@@ -101,6 +100,22 @@ describe("WebhookRepository team access", () => {
 
   describe("listWebhooks", () => {
     const listWhere = () => prismaMock.webhook.findMany.mock.calls[0][0]?.where;
+
+    it("returns a managed child's inherited parent webhooks without their secret", async () => {
+      findUserTeams.mockResolvedValue({ teams: [] });
+      vi.mocked(eventTypeRepository.findParentEventTypeId).mockResolvedValue(500);
+      prismaMock.webhook.findMany.mockResolvedValue([
+        { ...webhook("child", null), eventTypeId: 42, secret: "child-secret" },
+        { ...webhook("parent", null), eventTypeId: 500, secret: "parent-secret" },
+      ] as unknown as Result<typeof prismaMock.webhook.findMany>);
+
+      const webhooks = await repository.listWebhooks({ userId: 1, eventTypeId: 42 });
+
+      expect(webhooks.map((hook) => [hook.id, hook.secret])).toEqual([
+        ["child", "child-secret"],
+        ["parent", null],
+      ]);
+    });
 
     it("includes only teams where the caller is an accepted ADMIN/OWNER", async () => {
       findUserTeams.mockResolvedValue({ teams: [{ teamId: 10 }, { teamId: 20 }] });
