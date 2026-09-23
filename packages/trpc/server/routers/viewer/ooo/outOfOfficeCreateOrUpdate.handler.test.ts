@@ -12,6 +12,9 @@ vi.mock("@calcom/prisma", () => {
       findUnique: vi.fn(),
       upsert: vi.fn(),
     },
+    user: {
+      findUnique: vi.fn(),
+    },
   };
   return {
     default: mockObj,
@@ -83,6 +86,37 @@ describe("outOfOfficeCreateOrUpdate", () => {
     await expect(outOfOfficeCreateOrUpdate({ ctx: { user: mockUser }, input })).rejects.toThrow(
       "start_date_must_be_before_end_date"
     );
+  });
+
+  it("only redirects to a user who is an accepted member of a team shared with the OOO user", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    const input = {
+      dateRange: {
+        startDate: new Date("2025-03-28T23:00:00.000Z"),
+        endDate: new Date("2025-04-01T22:00:00.000Z"),
+      },
+      startDateOffset: 0,
+      endDateOffset: 0,
+      reasonId: 1,
+      notes: "",
+      toTeamUserId: 9,
+    };
+
+    await expect(outOfOfficeCreateOrUpdate({ ctx: { user: mockUser }, input })).rejects.toThrow(
+      "user_not_found"
+    );
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: {
+        id: 9,
+        teams: {
+          some: {
+            accepted: true,
+            team: { members: { some: { userId: mockUser.id, accepted: true } } },
+          },
+        },
+      },
+      select: { id: true },
+    });
   });
 
   it("should handle timezone offset correctly", async () => {
