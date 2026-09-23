@@ -1,9 +1,5 @@
+import { roleAllowsTeamEventTypeAction } from "@calcom/features/teams/services/TeamPermissionService";
 import { MembershipRole } from "@calcom/prisma/enums";
-
-const getResourcePermissions = async (..._args: unknown[]) => ({
-  canCreate: true, canEdit: true, canDelete: true, canRead: true
-});
-const Resource = { EventType: 'EventType' } as const;
 
 export interface TeamPermissions {
   canCreate: boolean;
@@ -34,77 +30,28 @@ export function getEffectiveRole(
   return orgMembership && hasHigherPrivilege(orgMembership, membershipRole) ? orgMembership : membershipRole;
 }
 
-export async function getTeamPermissions(
-  userId: number,
-  teamId: number,
-  effectiveRole: MembershipRole
-): Promise<TeamPermissions> {
-  try {
-    const permissions = await getResourcePermissions({
-      userId,
-      teamId,
-      resource: Resource.EventType,
-      userRole: effectiveRole,
-      fallbackRoles: {
-        read: {
-          roles: [MembershipRole.ADMIN, MembershipRole.OWNER, MembershipRole.MEMBER],
-        },
-        create: {
-          roles: [MembershipRole.ADMIN, MembershipRole.OWNER],
-        },
-        update: {
-          roles: [MembershipRole.ADMIN, MembershipRole.OWNER],
-        },
-        delete: {
-          roles: [MembershipRole.ADMIN, MembershipRole.OWNER],
-        },
-      },
-    });
-
-    return {
-      canCreate: permissions.canCreate,
-      canEdit: permissions.canEdit,
-      canDelete: permissions.canDelete,
-      canRead: permissions.canRead,
-    };
-  } catch (error) {
-    console.warn(
-      `PBAC check failed for user ${userId} on team ${teamId}, falling back to role check:`,
-      error
-    );
-
-    return getFallbackPermissions(effectiveRole);
-  }
-}
-
-function getFallbackPermissions(role: MembershipRole): TeamPermissions {
-  const isAdminOrOwner = role === MembershipRole.ADMIN || role === MembershipRole.OWNER;
-  const isMember = role === MembershipRole.MEMBER;
-
+export function getTeamPermissions(effectiveRole: MembershipRole): TeamPermissions {
   return {
-    canRead: isAdminOrOwner || isMember,
-    canCreate: isAdminOrOwner,
-    canEdit: isAdminOrOwner,
-    canDelete: isAdminOrOwner,
+    canRead: roleAllowsTeamEventTypeAction(effectiveRole, "read"),
+    canCreate: roleAllowsTeamEventTypeAction(effectiveRole, "create"),
+    canEdit: roleAllowsTeamEventTypeAction(effectiveRole, "update"),
+    canDelete: roleAllowsTeamEventTypeAction(effectiveRole, "delete"),
   };
 }
 
-export async function buildTeamPermissionsMap(
+export function buildTeamPermissionsMap(
   memberships: Array<{ team: { id: number; parentId?: number | null }; role: MembershipRole }>,
-  teamMemberships: MembershipWithRole[],
-  userId: number
-): Promise<Map<number, TeamPermissions>> {
-  const permissionPromises = memberships.map(async (membership) => {
-    const orgMembership = teamMemberships.find(
-      (teamM) => teamM.teamId === membership.team.parentId
-    )?.membershipRole;
+  teamMemberships: MembershipWithRole[]
+): Map<number, TeamPermissions> {
+  const roleByTeamId = new Map(teamMemberships.map((teamM) => [teamM.teamId, teamM.membershipRole]));
 
-    const effectiveRole = getEffectiveRole(orgMembership, membership.role);
-    const permissions = await getTeamPermissions(userId, membership.team.id, effectiveRole);
+  return new Map(
+    memberships.map((membership) => {
+      const orgMembership =
+        membership.team.parentId == null ? undefined : roleByTeamId.get(membership.team.parentId);
+      const effectiveRole = getEffectiveRole(orgMembership, membership.role);
 
-    return [membership.team.id, permissions] as const;
-  });
-
-  const results = await Promise.all(permissionPromises);
-  return new Map(results);
+      return [membership.team.id, getTeamPermissions(effectiveRole)] as const;
+    })
+  );
 }

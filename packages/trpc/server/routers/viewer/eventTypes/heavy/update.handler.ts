@@ -92,6 +92,8 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     calVideoSettings,
     hostGroups,
     enablePerHostLocations,
+    // An update must never move an event type between teams, so teamId is only compared, never written.
+    teamId: inputTeamId,
     ...rest
   } = input;
 
@@ -176,8 +178,9 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     },
   });
 
-  if (input.teamId && eventType.team?.id && input.teamId !== eventType.team.id) {
-    throw new TRPCError({ code: "UNAUTHORIZED" });
+  const teamId = eventType.team?.id;
+  if (inputTeamId != null && inputTeamId !== teamId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Event type cannot be moved to another team" });
   }
 
   const finalSeatsPerTimeSlot =
@@ -191,7 +194,6 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     });
   }
 
-  const teamId = input.teamId || eventType.team?.id;
   const guestsField = bookingFields?.find((field) => field.name === "guests");
 
   ensureUniqueBookingFields(bookingFields);

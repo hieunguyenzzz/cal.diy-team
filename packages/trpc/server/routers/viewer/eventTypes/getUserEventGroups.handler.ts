@@ -2,7 +2,6 @@ import { MembershipRepository } from "@calcom/features/membership/repositories/M
 import { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
 import { checkRateLimitAndThrowError } from "@calcom/lib/checkRateLimitAndThrowError";
 import type { PrismaClient } from "@calcom/prisma";
-import { MembershipRole } from "@calcom/prisma/enums";
 import { TRPCError } from "@trpc/server";
 import type { TrpcSessionUser } from "../../../types";
 import type { TEventTypeInputSchema } from "./getByViewer.schema";
@@ -10,13 +9,6 @@ import { TeamAccessUseCase } from "./teamAccessUseCase";
 import { EventGroupBuilder } from "./usecases/EventGroupBuilder";
 import { ProfilePermissionProcessor } from "./usecases/ProfilePermissionProcessor";
 import { EventTypeGroupFilter } from "./utils/EventTypeGroupFilter";
-
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
 
 type GetByViewerOptions = {
   ctx: {
@@ -64,35 +56,13 @@ export const getUserEventGroups = async ({ ctx, input }: GetByViewerOptions) => 
   const profileProcessor = new ProfilePermissionProcessor();
   const profiles = profileProcessor.processProfiles(eventTypeGroups, teamPermissionsMap);
 
-  const permissionCheckService = new PermissionCheckService();
-
-  const teamIdsToCheck = filteredEventTypeGroups
-    .map((group) => group.teamId)
-    .filter((teamId): teamId is number => teamId !== null && teamId !== undefined);
-
-  const teamPermissionChecks = teamIdsToCheck.map(async (teamId) => {
-    const canCreateEventType = await permissionCheckService.checkPermission({
-      userId: user.id,
-      teamId: teamId,
-      permission: "eventType.create",
-      fallbackRoles: [MembershipRole.OWNER, MembershipRole.ADMIN],
-    });
-    return {
-      teamId,
-      permissions: {
-        canCreateEventType,
-      },
+  const teamPermissions: Record<number, { canCreateEventType: boolean }> = {};
+  for (const group of filteredEventTypeGroups) {
+    if (!group.teamId) continue;
+    teamPermissions[group.teamId] = {
+      canCreateEventType: teamPermissionsMap.get(group.teamId)?.canCreate ?? false,
     };
-  });
-
-  const teamPermissionsArray = await Promise.all(teamPermissionChecks);
-  const teamPermissions = teamPermissionsArray.reduce(
-    (acc, item) => {
-      acc[item.teamId] = item.permissions;
-      return acc;
-    },
-    {} as Record<number, { canCreateEventType: boolean }>
-  );
+  }
 
   return {
     eventTypeGroups: filteredEventTypeGroups,

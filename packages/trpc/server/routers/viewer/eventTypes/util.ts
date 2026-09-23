@@ -1,8 +1,9 @@
 import type { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
+import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
+import { TeamPermissionService } from "@calcom/features/teams/services/TeamPermissionService";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { markdownToSafeHTML } from "@calcom/lib/markdownToSafeHTML";
 import prisma from "@calcom/prisma";
-import type { MembershipRole } from "@calcom/prisma/enums";
 import { PeriodType } from "@calcom/prisma/enums";
 import type { CustomInputSchema } from "@calcom/prisma/zod-utils";
 import { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
@@ -12,12 +13,6 @@ import authedProcedure from "../../../procedures/authedProcedure";
 import type { TUpdateInputSchema } from "./types";
 
 type PermissionString = string;
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
 
 type EventType = Awaited<ReturnType<EventTypeRepository["findAllByUpId"]>>[number];
 
@@ -94,16 +89,7 @@ export const eventOwnerProcedure = authedProcedure
     return next();
   });
 
-/**
- * Creates an event admin procedure with configurable permissions
- * @param permission - The specific permission required (e.g., "eventType.manage", "eventType.update")
- * @param fallbackRoles - Roles to check when PBAC is disabled (defaults to ["ADMIN", "OWNER"])
- * @returns A procedure that checks the specified permission
- */
-export const createEventPbacProcedure = (
-  permission: PermissionString,
-  fallbackRoles: MembershipRole[] = ["ADMIN", "OWNER"]
-) => {
+export const createEventPbacProcedure = (permission: PermissionString) => {
   return authedProcedure
     .input(
       z
@@ -118,6 +104,11 @@ export const createEventPbacProcedure = (
         })
     )
     .use(async ({ ctx, input, next }) => {
+      // tRPC merges this parser with the handler's, so a handler may act on `id` while we check
+      // `eventTypeId`. Refusing a mismatch keeps the checked event and the acted-on event the same.
+      if (input.id !== undefined && input.eventTypeId !== undefined && input.id !== input.eventTypeId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "id and eventTypeId must match" });
+      }
       const id = input.eventTypeId ?? input.id;
 
       const event = await ctx.prisma.eventType.findUnique({
@@ -136,6 +127,7 @@ export const createEventPbacProcedure = (
               members: {
                 select: {
                   userId: true,
+                  accepted: true,
                 },
               },
             },
@@ -157,13 +149,12 @@ export const createEventPbacProcedure = (
           });
         }
       } else {
-        // Team event - check PBAC/fallback permissions
-        const permissionCheckService = new PermissionCheckService();
-        const hasPermission = await permissionCheckService.checkPermission({
+        const teamPermissionService = new TeamPermissionService(new MembershipRepository(ctx.prisma));
+        const hasPermission = await teamPermissionService.hasEventTypePermission({
           userId: ctx.user.id,
+          userRole: ctx.user.role,
           teamId: event.teamId,
           permission,
-          fallbackRoles,
         });
 
         if (!hasPermission) {
@@ -178,8 +169,10 @@ export const createEventPbacProcedure = (
       if (input.users && input.users.length > 0) {
         const isAllowed = (() => {
           if (event.team) {
-            const allTeamMembers = event.team.members.map((member) => member.userId);
-            return input.users?.every((userId: number) => allTeamMembers.includes(userId)) ?? true;
+            const acceptedMemberIds = new Set(
+              event.team.members.filter((member) => member.accepted).map((member) => member.userId)
+            );
+            return input.users?.every((userId: number) => acceptedMemberIds.has(userId)) ?? true;
           }
           return input.users?.every((userId: number) => userId === ctx.user.id) ?? true;
         })();

@@ -1,13 +1,7 @@
-import { MembershipRole } from "@calcom/prisma/enums";
-
 import { ZGetInputSchema } from "../get.schema";
 import { createEventPbacProcedure } from "../util";
 
-export const get = createEventPbacProcedure("eventType.read", [
-  MembershipRole.OWNER,
-  MembershipRole.ADMIN,
-  MembershipRole.MEMBER,
-])
+export const get = createEventPbacProcedure("eventType.read")
   .input(ZGetInputSchema)
   .query(async ({ ctx, input }) => {
     const handler = (await import("../get.handler")).getHandler;
