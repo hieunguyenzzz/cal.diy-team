@@ -4766,5 +4766,7 @@
   "team_upcoming_bookings_warning_one": "This team has {{count}} upcoming booking. It will be kept but detached from the team's event types.",
   "team_upcoming_bookings_warning_other": "This team has {{count}} upcoming bookings. They will be kept but detached from the team's event types.",
   "type_team_slug_to_confirm": "Type {{slug}} to confirm",
+  "team_member_added": "Member added",
+  "left_team_successfully": "You left the team",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }
