@@ -50,11 +50,12 @@ describe("TeamsListView", () => {
     expect(screen.getByText("create-dialog-open")).toBeTruthy();
   });
 
-  it("lists the caller's teams with their role and a manage link only where they may manage", () => {
+  it("lists the caller's teams with their role and manage links only where they may manage", () => {
     useQuery.mockReturnValue({
       data: [
         { ...team, role: "OWNER", memberCount: null },
         { ...team, id: 8, name: "Ops", slug: "ops", role: "MEMBER", memberCount: null },
+        { ...team, id: 9, name: "Support", slug: "support", role: "ADMIN", memberCount: null },
       ],
       isPending: false,
     });
@@ -65,16 +66,22 @@ describe("TeamsListView", () => {
     expect(screen.getByText("owner")).toBeTruthy();
     expect(screen.getByText("member")).toBeTruthy();
     const manageLinks = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
-    expect(manageLinks).toEqual(["/settings/teams/7/profile"]);
+    expect(manageLinks).toEqual([
+      "/settings/teams/7/members",
+      "/settings/teams/7/profile",
+      "/settings/teams/9/members",
+      "/settings/teams/9/profile",
+    ]);
   });
 
-  it("shows member counts to the instance admin", () => {
+  it("shows member counts and manage links to the instance admin on teams they are not in", () => {
     useQuery.mockReturnValue({ data: [{ ...team, role: null, memberCount: 3 }], isPending: false });
 
     render(<TeamsListView isInstanceAdmin />);
 
     expect(screen.getByText("number_member:3")).toBeTruthy();
     expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
+      "/settings/teams/7/members",
       "/settings/teams/7/profile",
     ]);
   });
