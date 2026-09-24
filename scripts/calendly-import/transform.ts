@@ -76,14 +76,10 @@ function responsesFor(booker: CalendlyInvitee, guests: string[]) {
   return responses;
 }
 
-function cancellerEmail(
-  cancellation: CalendlyCancellation | null,
-  hostEmail: string,
-  inviteeEmail: string | null
-): string | null {
-  if (cancellation?.canceler_type === "host") return hostEmail;
-  if (cancellation?.canceler_type === "invitee") return inviteeEmail;
-  return null;
+function canceller(cancellation: CalendlyCancellation | null, inviteeEmail: string | null) {
+  if (cancellation?.canceler_type === "host") return { cancelledBy: null, cancelledByHost: true };
+  if (cancellation?.canceler_type === "invitee") return { cancelledBy: inviteeEmail, cancelledByHost: false };
+  return { cancelledBy: null, cancelledByHost: false };
 }
 
 function requireInvitees(event: CalendlyEvent, cache: CalendlyCache) {
@@ -104,11 +100,11 @@ function bookingFor(input: {
   event: CalendlyEvent;
   invitees: CalendlyInvitee[];
   guests: string[];
-  hostEmail: string;
+  hostLocalPart: string;
   targetSlug: string;
   eventUuids: Set<string>;
 }): BookingRow {
-  const { event, invitees, guests, hostEmail, targetSlug, eventUuids } = input;
+  const { event, invitees, guests, hostLocalPart, targetSlug, eventUuids } = input;
   const booker = invitees[0];
   const cancelled = event.status === "canceled";
   const cancellation = event.cancellation ?? booker.cancellation ?? null;
@@ -125,7 +121,7 @@ function bookingFor(input: {
 
   return {
     uid: bookingUid(event.uri),
-    hostEmail,
+    hostLocalPart,
     eventTypeSlug: targetSlug,
     title: event.name,
     startTime: toTimestamp(event.start_time),
@@ -134,7 +130,7 @@ function bookingFor(input: {
     location: locationOf(event),
     status: cancelled ? "cancelled" : "accepted",
     cancellationReason: cancelled ? cancellation?.reason || null : null,
-    cancelledBy: cancelled ? cancellerEmail(cancellation, hostEmail, booker.email) : null,
+    ...(cancelled ? canceller(cancellation, booker.email) : { cancelledBy: null, cancelledByHost: false }),
     rescheduled: rescheduledTo ? true : null,
     fromReschedule: oldEventUuid && eventUuids.has(oldEventUuid) ? `calendly-${oldEventUuid}` : null,
     metadata,
@@ -143,8 +139,8 @@ function bookingFor(input: {
 }
 
 // Mirrors the app's createBooking: invitees, then guests, then the other collective hosts as attendees.
-function attendeesFor(uid: string, invitees: CalendlyInvitee[], guests: string[], hostEmails: string[]) {
-  const blank = { bookingUid: uid, hostEmail: null, phoneNumber: null, noShow: false };
+function attendeesFor(uid: string, invitees: CalendlyInvitee[], guests: string[], hostLocalParts: string[]) {
+  const blank = { bookingUid: uid, hostLocalPart: null, phoneNumber: null, noShow: false };
   const bookerTimeZone = invitees[0].timezone || FALLBACK_TIME_ZONE;
   const rows: AttendeeRow[] = invitees.map((invitee) => ({
     ...blank,
@@ -155,9 +151,9 @@ function attendeesFor(uid: string, invitees: CalendlyInvitee[], guests: string[]
     noShow: invitee.no_show !== null,
   }));
   for (const email of guests) rows.push({ ...blank, email, name: "", timeZone: bookerTimeZone });
-  for (const hostEmail of new Set(hostEmails.slice(1))) {
-    if (hostEmail === hostEmails[0]) continue;
-    rows.push({ ...blank, hostEmail, email: null, name: null, timeZone: null });
+  for (const hostLocalPart of new Set(hostLocalParts.slice(1))) {
+    if (hostLocalPart === hostLocalParts[0]) continue;
+    rows.push({ ...blank, hostLocalPart, email: null, name: null, timeZone: null });
   }
   return rows;
 }
@@ -180,7 +176,7 @@ export function buildImportPlan(cache: CalendlyCache, catalog: TargetCatalog): I
   }
 
   const hostMappings = new Map<string, HostMapping>();
-  const hostEmailFor = (calendlyEmail: string) => {
+  const hostLocalPartFor = (calendlyEmail: string) => {
     const localPart = localPartOf(calendlyEmail);
     let mapping = hostMappings.get(localPart);
     if (!mapping) {
@@ -188,12 +184,11 @@ export function buildImportPlan(cache: CalendlyCache, catalog: TargetCatalog): I
       if (matches.length > 1) {
         throw new CalendlyImportError(`Host "${localPart}" matches ${matches.length} target users`);
       }
-      const targetEmail = matches[0] ?? `${localPart}@${MISSING_HOST_DOMAIN}`;
-      mapping = { localPart, targetEmail, create: matches.length === 0, events: 0 };
+      mapping = { localPart, currentEmail: matches[0] ?? null, events: 0 };
       hostMappings.set(localPart, mapping);
     }
     mapping.events++;
-    return mapping.targetEmail;
+    return localPart;
   };
 
   const eventTypeMappings = new Map<string, EventTypeMapping>();
@@ -226,7 +221,9 @@ export function buildImportPlan(cache: CalendlyCache, catalog: TargetCatalog): I
     eventTypeMappings.set(event.event_type, mapping);
 
     if (!event.event_memberships.length) throw new CalendlyImportError(`Event ${event.uri} has no hosts`);
-    const hostEmails = event.event_memberships.map((membership) => hostEmailFor(membership.user_email));
+    const hostLocalParts = event.event_memberships.map((membership) =>
+      hostLocalPartFor(membership.user_email)
+    );
     const calendlyHostEmails = new Set(event.event_memberships.map((m) => m.user_email.toLowerCase()));
 
     const allInvitees = requireInvitees(event, cache);
@@ -243,9 +240,16 @@ export function buildImportPlan(cache: CalendlyCache, catalog: TargetCatalog): I
         (email) => !calendlyHostEmails.has(email.toLowerCase()) && !inviteeEmails.has(email.toLowerCase())
       );
 
-    const booking = bookingFor({ event, invitees, guests, hostEmail: hostEmails[0], targetSlug, eventUuids });
+    const booking = bookingFor({
+      event,
+      invitees,
+      guests,
+      hostLocalPart: hostLocalParts[0],
+      targetSlug,
+      eventUuids,
+    });
     bookings.push(booking);
-    attendees.push(...attendeesFor(booking.uid, invitees, guests, hostEmails));
+    attendees.push(...attendeesFor(booking.uid, invitees, guests, hostLocalParts));
   }
 
   const hosts = [...hostMappings.values()];
@@ -257,9 +261,9 @@ export function buildImportPlan(cache: CalendlyCache, catalog: TargetCatalog): I
     archiveEventTypes: [...archiveEventTypes.values()],
     hostMappings: hosts,
     usersToCreate: hosts
-      .filter((host) => host.create)
+      .filter((host) => host.currentEmail === null)
       .map((host) => ({
-        email: host.targetEmail,
+        email: `${host.localPart}@${MISSING_HOST_DOMAIN}`,
         username: host.localPart,
         name: displayNameFromLocalPart(host.localPart),
       })),
