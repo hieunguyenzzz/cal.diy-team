@@ -31,9 +31,14 @@ function TeamRow({ team, isInstanceAdmin }: { team: ListedTeam; isInstanceAdmin:
           <Badge variant="gray">{t("number_member", { count: team.memberCount })}</Badge>
         )}
         {canManageTeam(team, isInstanceAdmin) && (
-          <Button color="secondary" size="sm" href={`/settings/teams/${team.id}/profile`}>
-            {t("edit")}
-          </Button>
+          <>
+            <Button color="secondary" size="sm" href={`/settings/teams/${team.id}/members`}>
+              {t("members")}
+            </Button>
+            <Button color="secondary" size="sm" href={`/settings/teams/${team.id}/profile`}>
+              {t("edit")}
+            </Button>
+          </>
         )}
       </div>
     </li>
