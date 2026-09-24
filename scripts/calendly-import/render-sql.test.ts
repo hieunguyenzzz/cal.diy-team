@@ -10,6 +10,7 @@ const plan: ImportPlan = {
       hostLocalPart: "alice",
       eventTypeSlug: "showroom-visit",
       title: "O'Brien's Tour",
+      description: "Company?: Test Ltd",
       startTime: "2024-03-01T10:00:00.000Z",
       endTime: "2024-03-01T11:00:00.000Z",
       createdAt: "2024-02-20T09:00:00.000Z",
@@ -49,14 +50,36 @@ describe("renderImportSql", () => {
     expect(sql).not.toMatch(/\bDELETE\b/);
   });
 
-  it("only updates status and cancellation fields of untouched bookings Calendly has cancelled", () => {
+  it("updates only calendly-* rows that are still accepted and untouched by the app", () => {
     const updates = sql.match(/UPDATE "Booking"[\s\S]*?RETURNING/g) ?? [];
-    expect(updates).toHaveLength(1);
-    expect(updates[0]).toMatch(
-      /SET status = 'cancelled', "cancellationReason" = [^,]+,\s+"cancelledBy" = CASE/
+    expect(sql.match(/\bUPDATE\b/g)).toHaveLength(updates.length);
+    expect(updates).toHaveLength(2);
+    for (const update of updates) {
+      expect(update).toContain("t.uid LIKE 'calendly-%'");
+      expect(update).toContain("t.status = 'accepted'");
+      expect(update).toContain('t."updatedAt" IS NULL');
+    }
+  });
+
+  it("sets rescheduled=true before cancelling, and touches no other column", () => {
+    const [reschedule, cancel] = sql.match(/UPDATE "Booking"[\s\S]*?RETURNING/g) ?? [];
+    expect(reschedule).toMatch(/SET rescheduled = TRUE\s+FROM/);
+    expect(reschedule).toContain("b.rescheduled");
+    expect(cancel).toMatch(
+      /SET status = 'cancelled', "cancellationReason" = b\.cancellation_reason,\s+"cancelledBy" = CASE[^\n]+END\s+FROM/
     );
-    expect(updates[0]).toContain(`t.status = 'accepted' AND t."updatedAt" IS NULL`);
-    expect(sql.match(/\bUPDATE\b/g)).toHaveLength(1);
+    expect(cancel).toContain("b.status = 'cancelled'");
+  });
+
+  it("reports inserted, cancelled-updated, rescheduled-updated and skipped", () => {
+    for (const label of ["inserted=", "skipped=", "cancelled-updated=", "rescheduled-updated="]) {
+      expect(sql).toContain(label);
+    }
+  });
+
+  it("inserts the answers as description only on insert", () => {
+    expect(sql).toContain("'O''Brien''s Tour', 'Company?: Test Ltd'");
+    expect(sql).not.toMatch(/SET[^;]*description/);
   });
 
   it("matches hosts by email local-part, never by full address", () => {

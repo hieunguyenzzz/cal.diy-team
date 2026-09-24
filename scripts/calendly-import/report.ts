@@ -7,6 +7,8 @@ const countBy = <T>(items: T[], key: (item: T) => string) => {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]);
 };
 
+const mappedLabel = (aliased: boolean) => (aliased ? "ALIASED" : "matched");
+
 // Counts, slugs and staff mailboxes only: never customer names, emails or answers.
 export function formatPlanReport(plan: ImportPlan, delta: DeltaSummary): string {
   const lines: string[] = [];
@@ -39,7 +41,8 @@ export function formatPlanReport(plan: ImportPlan, delta: DeltaSummary): string 
     "Event type mapping (calendly uuid | calendly slug | calendly name -> target slug | kind | bookings):"
   );
   for (const m of [...plan.eventTypeMappings].sort((a, b) => b.bookings - a.bookings)) {
-    const kind = `${m.archive ? "ARCHIVE (new hidden)" : "matched"}${m.unresolved ? ", type unreadable in Calendly" : ""}`;
+    const base = m.archive ? "ARCHIVE (new hidden)" : mappedLabel(m.aliased);
+    const kind = `${base}${m.unresolved ? ", type unreadable in Calendly" : ""}`;
     lines.push(
       `  ${m.calendlyUri.split("/").at(-1)} | ${m.calendlySlug} | ${m.calendlyName} -> ${m.targetSlug} | ${kind} | ${m.bookings}`
     );
@@ -58,6 +61,7 @@ export function formatPlanReport(plan: ImportPlan, delta: DeltaSummary): string 
     "",
     "Against the target's current bookings (the SQL applies the same rules and prints its own result: lines):",
     `  insert new: ${delta.insert}`,
+    `  set rescheduled=true (rescheduled in Calendly since): ${delta.reschedule}`,
     `  update to cancelled (status, cancellationReason, cancelledBy only): ${delta.cancel}`,
     `  cancelled in Calendly but changed in Cal.diy, left alone: ${delta.blockedChangedInCalDiy}`,
     `  cancelled in Cal.diy but active in Calendly, left alone: ${delta.divergedLeftAlone}`,

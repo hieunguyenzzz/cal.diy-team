@@ -42,7 +42,8 @@ SELECT json_build_object(
   'eventTypeSlugs', (SELECT coalesce(json_agg(e.slug ORDER BY e.slug), '[]') FROM "EventType" e
                      JOIN "Team" t ON t.id = e."teamId" WHERE t.slug = ${team}),
   'existingBookings', (SELECT coalesce(json_agg(json_build_object(
-                         'uid', uid, 'status', status, 'changedInCalDiy', "updatedAt" IS NOT NULL)), '[]')
+                         'uid', uid, 'status', status, 'rescheduled', rescheduled,
+                         'changedInCalDiy', "updatedAt" IS NOT NULL)), '[]')
                        FROM "Booking" WHERE uid LIKE 'calendly-%')
 );
 `;
@@ -67,6 +68,7 @@ export function renderImportSql(plan: ImportPlan): string {
     sqlLiteral(b.hostLocalPart),
     sqlLiteral(b.eventTypeSlug),
     sqlLiteral(b.title),
+    sqlLiteral(b.description),
     sqlTimestamp(b.startTime),
     sqlTimestamp(b.endTime),
     sqlTimestamp(b.createdAt),
@@ -94,8 +96,9 @@ export function renderImportSql(plan: ImportPlan): string {
   // Hosts join on email local-part, never the full address, so staff email changes keep the same users.
   // A booking whose updatedAt is set was changed by the app (Prisma sets it; this script never does), so it is never touched.
   return `-- Calendly booking import: single transaction, safe to re-run as a delta sync.
--- Inserts new bookings; for untouched imported bookings Calendly has since cancelled, updates only
--- status, cancellationReason and cancelledBy. Nothing else is ever updated.
+-- Inserts new bookings. On imported (calendly-*) bookings that are still accepted and untouched by the app it
+-- only sets rescheduled=true (rescheduled in Calendly since) and status/cancellationReason/cancelledBy
+-- (cancelled in Calendly since). Nothing else is ever updated.
 \\set ON_ERROR_STOP on
 \\set QUIET on
 \\pset tuples_only on
@@ -122,7 +125,7 @@ WITH ins AS (
 SELECT 'result: archive event types inserted=' || count(*) FROM ins;
 
 CREATE TEMP TABLE ci_booking (
-  uid text, host_local_part text, event_type_slug text, title text, start_time timestamp, end_time timestamp,
+  uid text, host_local_part text, event_type_slug text, title text, description text, start_time timestamp, end_time timestamp,
   created_at timestamp, location text, status "BookingStatus", cancellation_reason text, cancelled_by text,
   cancelled_by_host boolean, rescheduled boolean, from_reschedule text, metadata jsonb, responses jsonb
 ) ON COMMIT DROP;
@@ -154,24 +157,35 @@ ${guard(
   "A mapped event type is missing on the target team"
 )}
 
-SELECT 'result: cancelled in Calendly but changed in Cal.diy, left alone=' || count(*)
+SELECT 'result: left-alone-changed-in-caldiy=' || count(*)
 FROM "Booking" t JOIN ci_booking b ON b.uid = t.uid
-WHERE b.status = 'cancelled' AND t.status = 'accepted' AND t."updatedAt" IS NOT NULL;
+WHERE t.uid LIKE 'calendly-%' AND t.status = 'accepted' AND t."updatedAt" IS NOT NULL
+  AND (b.status = 'cancelled' OR (b.rescheduled AND t.rescheduled IS NOT TRUE));
+
+-- Runs before the cancel update, so a booking rescheduled and cancelled since the last run gets both.
+WITH upd AS (
+  UPDATE "Booking" t SET rescheduled = TRUE
+  FROM ci_booking b
+  WHERE t.uid = b.uid AND t.uid LIKE 'calendly-%' AND b.rescheduled
+    AND t.status = 'accepted' AND t.rescheduled IS NOT TRUE AND t."updatedAt" IS NULL
+  RETURNING 1)
+SELECT 'result: rescheduled-updated=' || count(*) FROM upd;
 
 WITH upd AS (
   UPDATE "Booking" t
   SET status = 'cancelled', "cancellationReason" = b.cancellation_reason,
     "cancelledBy" = CASE WHEN b.cancelled_by_host THEN h.email ELSE b.cancelled_by END
   FROM ci_booking b JOIN ci_host h ON h.local_part = b.host_local_part
-  WHERE t.uid = b.uid AND b.status = 'cancelled' AND t.status = 'accepted' AND t."updatedAt" IS NULL
+  WHERE t.uid = b.uid AND t.uid LIKE 'calendly-%' AND b.status = 'cancelled'
+    AND t.status = 'accepted' AND t."updatedAt" IS NULL
   RETURNING 1)
-SELECT 'result: bookings cancelled since last run, updated=' || count(*) FROM upd;
+SELECT 'result: cancelled-updated=' || count(*) FROM upd;
 
 WITH ins AS (
-  INSERT INTO "Booking" (uid, "userId", "userPrimaryEmail", "eventTypeId", title, "startTime", "endTime",
+  INSERT INTO "Booking" (uid, "userId", "userPrimaryEmail", "eventTypeId", title, description, "startTime", "endTime",
     "createdAt", location, status, "cancellationReason", "cancelledBy", rescheduled, "fromReschedule",
     metadata, responses)
-  SELECT b.uid, h.id, h.email, e.id, b.title, b.start_time, b.end_time, b.created_at, b.location, b.status,
+  SELECT b.uid, h.id, h.email, e.id, b.title, b.description, b.start_time, b.end_time, b.created_at, b.location, b.status,
     b.cancellation_reason, CASE WHEN b.cancelled_by_host THEN h.email ELSE b.cancelled_by END,
     b.rescheduled, b.from_reschedule, b.metadata, b.responses
   FROM ci_booking b
@@ -187,9 +201,9 @@ att AS (
   JOIN ins ON ins.uid = a.booking_uid
   LEFT JOIN ci_host h ON h.local_part = a.host_local_part
   RETURNING 1)
-SELECT 'result: bookings inserted=' || (SELECT count(*) FROM ins)
-  || ' already present=' || ((SELECT count(*) FROM ci_booking) - (SELECT count(*) FROM ins))
-  || ' attendees inserted=' || (SELECT count(*) FROM att);
+SELECT 'result: inserted=' || (SELECT count(*) FROM ins)
+  || ' skipped=' || ((SELECT count(*) FROM ci_booking) - (SELECT count(*) FROM ins))
+  || ' attendees-inserted=' || (SELECT count(*) FROM att);
 
 COMMIT;
 `;

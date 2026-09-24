@@ -22,20 +22,26 @@ Re-run `fetch` then `import` at cut-over to pick up what changed in Calendly sin
 - New Calendly events are inserted, with their attendees.
 - An imported booking that is still `accepted` but that Calendly now shows as cancelled gets `status`,
   `cancellationReason` and `cancelledBy` updated. Nothing else on it changes. Its attendees don't change.
+- A reschedule made after the last run: the new event is inserted with `fromReschedule`, and the old booking gets
+  `rescheduled=true`, but only while it is still `accepted`. This is set before the cancel update, so it gets both.
+- Updates only ever apply to `calendly-*` uids.
 - A booking the app has changed since import is never touched. Imported rows are written without `updatedAt`,
   and Prisma sets it on every app update, so `updatedAt IS NOT NULL` means "changed in Cal.diy".
 - Everything else is left alone. That covers bookings cancelled in Cal.diy that are still active in Calendly,
   bookings that are no longer in Calendly, and bookings not created by this import.
 
 `--dry-run` reads the target's imported bookings and prints the same classification. `--apply` prints the counts
-the SQL actually applied as `result:` lines.
+the SQL actually applied as `result:` lines: `inserted`, `skipped`, `cancelled-updated`, `rescheduled-updated`
+and `left-alone-changed-in-caldiy`.
 
 ## Mapping rules
 
 - `uid` is `calendly-<Calendly event uuid>`. Calendly URIs go in `metadata` as flat strings (`calendlyEventUri`,
   `calendlyEventTypeUri`, `calendlyInviteeUris`, `calendlyRescheduledTo/From`). The app parses booking metadata
   as a string record, so nested objects there would break it.
-- Event types map by Calendly slug to the team's event types. Unmatched slugs get a hidden collective team event
+- Event types map by Calendly slug to the team's event types. A fixed alias map in `transform.ts` sends
+  `showroom-london`, `beaconsfield` and `sbs-remote-tour` to `clerkenwell-london`, `beaconsfield-berkshire` and
+  `virtual-showroom-tour`. It only applies when the target type exists. The dry run marks these rows `ALIASED`. Unmatched slugs get a hidden collective team event
   type `calendly-archive-<slug>` with no hosts. Event types the token can't read (403) use the event's name and
   duration.
 - Hosts map by email local-part, and the SQL also joins users by local-part, never by full address. That way
@@ -44,7 +50,8 @@ the SQL actually applied as `result:` lines.
   become `Attendee` rows, as the app's own `createBooking` stores them. A host with no target user is created as a
   locked, passwordless user `<local-part>@example.com` that belongs to no team.
 - `responses` are `name` and `email`, plus `attendeePhoneNumber` and `guests` where present, plus each Calendly
-  question slugified as a key. Attendees are the event's invitees (cancelled invitees of active group events are
+  question slugified as a key. The same answers go into `description` as "Question: Answer" lines, which the
+  app shows as "Additional notes". It is null when there are no answers, and it is only written on insert. Attendees are the event's invitees (cancelled invitees of active group events are
   dropped), then any guests. `Attendee.noShow` follows Calendly's no-show mark.
 
 ## Running
