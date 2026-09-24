@@ -9,7 +9,7 @@ const TYPE_UNREADABLE = "https://api.calendly.com/event_types/type-unreadable";
 const catalog: TargetCatalog = {
   teamSlug: "test-team",
   userEmails: ["alice@example.test", "bob@example.test"],
-  eventTypeSlugs: ["showroom-visit"],
+  eventTypeSlugs: ["showroom-visit", "clerkenwell-london"],
 };
 
 const eventUri = (id: string) => `https://api.calendly.com/scheduled_events/${id}`;
@@ -161,6 +161,19 @@ describe("buildImportPlan", () => {
     });
   });
 
+  it("maps the agreed Calendly aliases onto live types and flags them", () => {
+    const aliasType = "https://api.calendly.com/event_types/type-alias";
+    const cache = cacheOf([event("al", { event_type: aliasType })], { al: [invitee("al", 1)] });
+    cache.eventTypes.push({ uri: aliasType, slug: "showroom-london", name: "Old London", duration: 60 });
+    const plan = buildImportPlan(cache, catalog);
+    expect(plan.bookings[0].eventTypeSlug).toBe("clerkenwell-london");
+    expect(plan.eventTypeMappings[0]).toMatchObject({ aliased: true, archive: false });
+    expect(plan.archiveEventTypes).toEqual([]);
+
+    const withoutTarget = buildImportPlan(cache, { ...catalog, eventTypeSlugs: ["showroom-visit"] });
+    expect(withoutTarget.bookings[0].eventTypeSlug).toBe("calendly-archive-showroom-london");
+  });
+
   it("keeps every active invitee of a group event as an attendee and drops canceled ones", () => {
     const plan = single(event("g"), [
       invitee("g", 2),
@@ -199,6 +212,8 @@ describe("buildImportPlan", () => {
       "calendly-name": "Dup",
       "company-name": "Test Ltd",
     });
+    expect(plan.bookings[0].description).toBe("Name: Dup\nCompany name?: Test Ltd");
+    expect(single(event("no-answers")).bookings[0].description).toBeNull();
     expect(plan.attendees[0]).toMatchObject({
       noShow: true,
       phoneNumber: "+44 0000 000000",

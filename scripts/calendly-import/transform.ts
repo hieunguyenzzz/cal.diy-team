@@ -13,6 +13,12 @@ import type {
 } from "./types";
 
 const ARCHIVE_SLUG_PREFIX = "calendly-archive-";
+// Business decision: these retired Calendly types were the same visit as a live Cal.diy type.
+const CALENDLY_SLUG_ALIASES: Record<string, string> = {
+  "showroom-london": "clerkenwell-london",
+  beaconsfield: "beaconsfield-berkshire",
+  "sbs-remote-tour": "virtual-showroom-tour",
+};
 const MISSING_HOST_DOMAIN = "example.com";
 // Calendly's timezone is optional; Attendee.timeZone is required and the business runs on UK time.
 const FALLBACK_TIME_ZONE = "Europe/London";
@@ -82,6 +88,20 @@ function canceller(cancellation: CalendlyCancellation | null, inviteeEmail: stri
   return { cancelledBy: null, cancelledByHost: false };
 }
 
+function descriptionFor(booker: CalendlyInvitee) {
+  const answers = [...booker.questions_and_answers].sort((a, b) => a.position - b.position);
+  const lines = answers.map(({ question, answer }) => `${question}: ${answer}`);
+  return lines.length ? lines.join("\n") : null;
+}
+
+// An alias applies only when its target exists on the team; otherwise the slug falls back to exact or archive.
+function targetSlugFor(calendlySlug: string, targetSlugs: Set<string>) {
+  const alias = CALENDLY_SLUG_ALIASES[calendlySlug];
+  if (alias && targetSlugs.has(alias)) return { targetSlug: alias, archive: false, aliased: true };
+  if (targetSlugs.has(calendlySlug)) return { targetSlug: calendlySlug, archive: false, aliased: false };
+  return { targetSlug: `${ARCHIVE_SLUG_PREFIX}${calendlySlug}`, archive: true, aliased: false };
+}
+
 function requireInvitees(event: CalendlyEvent, cache: CalendlyCache) {
   const uuid = uuidFromUri(event.uri);
   const invitees = cache.inviteesByEventUuid[uuid];
@@ -124,6 +144,7 @@ function bookingFor(input: {
     hostLocalPart,
     eventTypeSlug: targetSlug,
     title: event.name,
+    description: descriptionFor(booker),
     startTime: toTimestamp(event.start_time),
     endTime: toTimestamp(event.end_time),
     createdAt: toTimestamp(event.created_at),
@@ -199,8 +220,7 @@ export function buildImportPlan(cache: CalendlyCache, catalog: TargetCatalog): I
 
   for (const event of cache.events) {
     const calendlyType = resolveEventType(event, eventTypeByUri);
-    const archive = !targetSlugs.has(calendlyType.slug);
-    const targetSlug = archive ? `${ARCHIVE_SLUG_PREFIX}${calendlyType.slug}` : calendlyType.slug;
+    const { targetSlug, archive, aliased } = targetSlugFor(calendlyType.slug, targetSlugs);
     if (archive && !archiveEventTypes.has(targetSlug)) {
       archiveEventTypes.set(targetSlug, {
         slug: targetSlug,
@@ -214,6 +234,7 @@ export function buildImportPlan(cache: CalendlyCache, catalog: TargetCatalog): I
       calendlyName: calendlyType.name,
       targetSlug,
       archive,
+      aliased,
       unresolved: calendlyType.unresolved,
       bookings: 0,
     };
