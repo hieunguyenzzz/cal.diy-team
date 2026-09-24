@@ -23,6 +23,20 @@ export type ZohoToken = {
   refresh_token: string;
 };
 
+const DEFAULT_API_DOMAIN = "https://www.zohoapis.com";
+
+// Mirrors the accounts servers accepted in api/callback.ts, so a tampered credential cannot send the
+// access token outside Zoho. See https://www.zoho.com/crm/developer/docs/api/v8/multi-dc.html
+const AUTHORIZED_API_DOMAINS = [
+  "https://www.zohoapis.com",
+  "https://www.zohoapis.eu",
+  "https://www.zohoapis.in",
+  "https://www.zohoapis.com.cn",
+  "https://www.zohoapis.jp",
+  "https://www.zohoapis.com.au",
+  "https://www.zohoapis.ca",
+];
+
 export type ZohoContact = {
   id: string;
   email: string;
@@ -52,11 +66,25 @@ class ZohoCrmCrmService implements CRM {
   private client_id = "";
   private client_secret = "";
   private accessToken = "";
+  private apiDomain = DEFAULT_API_DOMAIN;
 
   constructor(credential: CredentialPayload) {
     this.integrationName = "zohocrm_crm";
     this.auth = this.zohoCrmAuth(credential).then((r) => r);
     this.log = logger.getSubLogger({ prefix: [`[[lib] ${this.integrationName}`] });
+    this.apiDomain = this.getApiDomain(credential);
+  }
+
+  // Credentials without api_domain keep the previous US-only behaviour.
+  private getApiDomain(credential: CredentialPayload) {
+    const apiDomain = (credential.key as unknown as Partial<ZohoToken> | null)?.api_domain;
+    if (!apiDomain) return DEFAULT_API_DOMAIN;
+    if (AUTHORIZED_API_DOMAINS.includes(apiDomain)) return apiDomain;
+    this.log.error("Unauthorized Zoho api_domain on credential, falling back to default", {
+      credentialId: credential.id,
+      apiDomain,
+    });
+    return DEFAULT_API_DOMAIN;
   }
 
   async createContacts(contactsToCreate: ContactCreateInput[]) {
@@ -74,7 +102,7 @@ class ZohoCrmCrmService implements CRM {
     });
     const response = await axios({
       method: "post",
-      url: `https://www.zohoapis.com/crm/v3/Contacts`,
+      url: `${this.apiDomain}/crm/v3/Contacts`,
       headers: {
         "content-type": "application/json",
         authorization: `Zoho-oauthtoken ${this.accessToken}`,
@@ -100,7 +128,7 @@ class ZohoCrmCrmService implements CRM {
 
     const response = await axios({
       method: "get",
-      url: `https://www.zohoapis.com/crm/v3/Contacts/search?criteria=${searchCriteria}`,
+      url: `${this.apiDomain}/crm/v3/Contacts/search?criteria=${searchCriteria}`,
       headers: {
         authorization: `Zoho-oauthtoken ${this.accessToken}`,
       },
@@ -145,7 +173,7 @@ class ZohoCrmCrmService implements CRM {
 
     return axios({
       method: "post",
-      url: `https://www.zohoapis.com/crm/v3/Events`,
+      url: `${this.apiDomain}/crm/v3/Events`,
       headers: {
         "content-type": "application/json",
         authorization: `Zoho-oauthtoken ${this.accessToken}`,
@@ -172,7 +200,7 @@ class ZohoCrmCrmService implements CRM {
     };
     return axios({
       method: "put",
-      url: `https://www.zohoapis.com/crm/v3/Events`,
+      url: `${this.apiDomain}/crm/v3/Events`,
       headers: {
         "content-type": "application/json",
         authorization: `Zoho-oauthtoken ${this.accessToken}`,
@@ -186,7 +214,7 @@ class ZohoCrmCrmService implements CRM {
   private deleteMeeting = async (uid: string) => {
     return axios({
       method: "delete",
-      url: `https://www.zohoapis.com/crm/v3/Events?ids=${uid}`,
+      url: `${this.apiDomain}/crm/v3/Events?ids=${uid}`,
       headers: {
         "content-type": "application/json",
         authorization: `Zoho-oauthtoken ${this.accessToken}`,
@@ -245,6 +273,7 @@ class ZohoCrmCrmService implements CRM {
             data: {
               key: {
                 ...(zohoCrmTokenInfo.data as ZohoToken),
+                api_domain: zohoCrmTokenInfo.data.api_domain ?? credentialKey.api_domain,
                 refresh_token: credentialKey.refresh_token,
                 accountServer: credentialKey.accountServer,
               },
