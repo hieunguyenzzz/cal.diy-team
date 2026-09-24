@@ -88,7 +88,8 @@ describe("buildImportPlan", () => {
     expect(byHost.bookings[0]).toMatchObject({
       status: "cancelled",
       cancellationReason: "Closed",
-      cancelledBy: "alice@example.test",
+      cancelledBy: null,
+      cancelledByHost: true,
     });
 
     const byInvitee = single(
@@ -98,7 +99,10 @@ describe("buildImportPlan", () => {
       }),
       [invitee("d", 1, { status: "canceled" })]
     );
-    expect(byInvitee.bookings[0].cancelledBy).toBe("person1@customer.test");
+    expect(byInvitee.bookings[0]).toMatchObject({
+      cancelledBy: "person1@customer.test",
+      cancelledByHost: false,
+    });
   });
 
   it("maps hosts by email local-part and plans a locked user for unknown hosts", () => {
@@ -111,12 +115,20 @@ describe("buildImportPlan", () => {
         ],
       })
     );
-    expect(plan.bookings[0].hostEmail).toBe("carol.new@example.com");
+    expect(plan.bookings[0].hostLocalPart).toBe("carol.new");
     expect(plan.usersToCreate).toEqual([
       { email: "carol.new@example.com", username: "carol.new", name: "Carol" },
     ]);
-    const hostAttendees = plan.attendees.filter((a) => a.hostEmail).map((a) => a.hostEmail);
-    expect(hostAttendees).toEqual(["alice@example.test", "bob@example.test"]);
+    const hostAttendees = plan.attendees.filter((a) => a.hostLocalPart).map((a) => a.hostLocalPart);
+    expect(hostAttendees).toEqual(["alice", "bob"]);
+    expect(JSON.stringify(plan.bookings)).not.toContain("@example.test");
+    expect(plan.hostMappings.find((h) => h.localPart === "alice")?.currentEmail).toBe("alice@example.test");
+  });
+
+  it("keys hosts on local-part so a later email change on the target keeps the same mapping", () => {
+    const renamed = { ...catalog, userEmails: ["alice@real.test", "bob@real.test"] };
+    const cache = cacheOf([event("e")], { e: [invitee("e", 1)] });
+    expect(buildImportPlan(cache, renamed).bookings).toEqual(buildImportPlan(cache, catalog).bookings);
   });
 
   it("fails when a host local-part matches more than one target user", () => {

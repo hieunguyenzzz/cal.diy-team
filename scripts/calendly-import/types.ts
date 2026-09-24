@@ -58,9 +58,13 @@ export type TargetCatalog = {
   eventTypeSlugs: string[];
 };
 
+// Bookings a previous run imported; changedInCalDiy means the app updated the row (updatedAt is set).
+export type ExistingBooking = { uid: string; status: string; changedInCalDiy: boolean };
+
 export type BookingRow = {
   uid: string;
-  hostEmail: string;
+  // Users are matched by email local-part at write time, so later email changes don't break the mapping.
+  hostLocalPart: string;
   eventTypeSlug: string;
   title: string;
   startTime: string;
@@ -69,17 +73,19 @@ export type BookingRow = {
   location: string | null;
   status: "accepted" | "cancelled";
   cancellationReason: string | null;
+  // Invitee email, or null when the host cancelled (cancelledByHost) and the SQL fills in the host's email.
   cancelledBy: string | null;
+  cancelledByHost: boolean;
   rescheduled: boolean | null;
   fromReschedule: string | null;
   metadata: Record<string, string>;
   responses: Record<string, unknown>;
 };
 
-// Host attendees carry only hostEmail; name and time zone come from the target users table.
+// Host attendees carry only hostLocalPart; email, name and time zone come from the target users table.
 export type AttendeeRow = {
   bookingUid: string;
-  hostEmail: string | null;
+  hostLocalPart: string | null;
   email: string | null;
   name: string | null;
   timeZone: string | null;
@@ -97,7 +103,8 @@ export type EventTypeMapping = {
   bookings: number;
 };
 
-export type HostMapping = { localPart: string; targetEmail: string; create: boolean; events: number };
+// currentEmail is only for the report; null means the import creates the user.
+export type HostMapping = { localPart: string; currentEmail: string | null; events: number };
 
 export type ImportPlan = {
   teamSlug: string;
