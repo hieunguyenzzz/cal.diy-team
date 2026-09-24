@@ -52,6 +52,11 @@ function resolveEventType(event: CalendlyEvent, byUri: Map<string, CalendlyEvent
   const known = byUri.get(event.event_type);
   if (known?.slug) return { slug: known.slug, name: known.name, duration: known.duration, unresolved: false };
   const minutes = Math.round((Date.parse(event.end_time) - Date.parse(event.start_time)) / 60000);
+  if (!Number.isInteger(minutes) || minutes <= 0) {
+    throw new CalendlyImportError(
+      `Event type ${uuidFromUri(event.event_type)}: cannot derive a duration from event ${uuidFromUri(event.uri)}`
+    );
+  }
   return {
     slug: slugify(known?.name ?? event.name),
     name: known?.name ?? event.name,

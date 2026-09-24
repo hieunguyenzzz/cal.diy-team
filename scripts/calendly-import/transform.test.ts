@@ -174,6 +174,13 @@ describe("buildImportPlan", () => {
     expect(withoutTarget.bookings[0].eventTypeSlug).toBe("calendly-archive-showroom-london");
   });
 
+  it("fails with the event-type uuid when an unreadable type's duration can't be derived", () => {
+    for (const end_time of ["not-a-date", "2024-03-01T10:00:00.000000Z"]) {
+      const bad = event("bad", { event_type: TYPE_UNREADABLE, end_time });
+      expect(() => single(bad)).toThrow(/Event type type-unreadable: cannot derive a duration/);
+    }
+  });
+
   it("keeps every active invitee of a group event as an attendee and drops canceled ones", () => {
     const plan = single(event("g"), [
       invitee("g", 2),
