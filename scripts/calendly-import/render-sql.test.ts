@@ -33,6 +33,8 @@ const plan: ImportPlan = {
   droppedCanceledInvitees: 0,
 };
 
+const NUL = String.fromCharCode(0);
+
 describe("renderImportSql", () => {
   const sql = renderImportSql(plan);
 
@@ -86,6 +88,23 @@ describe("renderImportSql", () => {
     expect(sql).not.toMatch(/u\.email = /);
     expect(sql).toContain("JOIN ci_host h ON h.local_part = b.host_local_part");
     expect(sql).toContain("('calendly-evt-1', 'alice', 'showroom-visit'");
+  });
+
+  it("strips NUL from every JSON string and key so the ::jsonb cast can't abort the run", () => {
+    const booking = {
+      ...plan.bookings[0],
+      metadata: { calendlyEventUri: `https://api.calendly.com/scheduled_events/evt${NUL}-1` },
+      responses: {
+        name: "Test Person",
+        email: "person@customer.test",
+        [`comp${NUL}any`]: [`Test${NUL} Ltd`],
+      },
+    };
+    const rendered = renderImportSql({ ...plan, bookings: [booking] });
+    expect(rendered).not.toContain(NUL);
+    expect(rendered).not.toContain("\\u0000");
+    expect(rendered).toContain('"company":["Test Ltd"]');
+    expect(rendered).toContain("scheduled_events/evt-1");
   });
 
   it("creates missing hosts locked and archive event types hidden", () => {

@@ -4,7 +4,22 @@ const ROWS_PER_INSERT = 200;
 
 // Booking/Attendee timestamps are "timestamp without time zone" holding UTC.
 const sqlTimestamp = (iso: string) => sqlLiteral(iso.replace("T", " ").replace("Z", ""));
-const sqlJson = (value: unknown) => `${sqlLiteral(JSON.stringify(value))}::jsonb`;
+const NUL = String.fromCharCode(0);
+
+// JSON.stringify turns NUL into the text escape \u0000, which Postgres rejects on ::jsonb, so strip it from
+// every string (keys included) before serialising.
+function withoutNul(value: unknown): unknown {
+  if (typeof value === "string") return value.replaceAll(NUL, "");
+  if (Array.isArray(value)) return value.map(withoutNul);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key.replaceAll(NUL, ""), withoutNul(item)])
+    );
+  }
+  return value;
+}
+
+const sqlJson = (value: unknown) => `${sqlLiteral(JSON.stringify(withoutNul(value)))}::jsonb`;
 
 function valuesInChunks(table: string, rows: string[][]): string {
   const statements: string[] = [];
@@ -25,7 +40,7 @@ export const sqlLiteral = (value: string | number | boolean | null): string => {
   if (value === null) return "NULL";
   if (typeof value === "number") return String(value);
   if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
-  return `'${value.replaceAll(String.fromCharCode(0), "").replace(/'/g, "''")}'`;
+  return `'${value.replaceAll(NUL, "").replace(/'/g, "''")}'`;
 };
 
 export function catalogQuery(teamSlug: string, hostLocalParts: string[]): string {
