@@ -117,7 +117,7 @@ describe("buildImportPlan", () => {
     );
     expect(plan.bookings[0].hostLocalPart).toBe("carol.new");
     expect(plan.usersToCreate).toEqual([
-      { email: "carol.new@example.com", username: "carol.new", name: "Carol" },
+      { email: "carol.new@calendly.test", username: "carol.new", name: "Carol" },
     ]);
     const hostAttendees = plan.attendees.filter((a) => a.hostLocalPart).map((a) => a.hostLocalPart);
     expect(hostAttendees).toEqual(["alice", "bob"]);
