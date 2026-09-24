@@ -67,6 +67,8 @@ export type BookingRow = {
   hostLocalPart: string;
   eventTypeSlug: string;
   title: string;
+  // Calendly's answers as "Question: Answer" lines, which the app shows as "Additional notes".
+  description: string | null;
   startTime: string;
   endTime: string;
   createdAt: string;
@@ -99,6 +101,7 @@ export type EventTypeMapping = {
   calendlyName: string;
   targetSlug: string;
   archive: boolean;
+  aliased: boolean;
   unresolved: boolean;
   bookings: number;
 };
