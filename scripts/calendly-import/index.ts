@@ -11,10 +11,12 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, writeFileSync } from "node:fs";
 import process from "node:process";
+import { planDelta } from "./delta";
 import { fetchCalendly, loadCache } from "./fetch-calendly";
 import { catalogQuery, renderImportSql } from "./render-sql";
 import { formatPlanReport } from "./report";
 import { buildImportPlan } from "./transform";
+import type { ExistingBooking } from "./types";
 
 const runId = randomUUID().slice(0, 8);
 const log = (message: string) => console.log(`[calendly-import ${runId}] ${message}`);
@@ -69,13 +71,14 @@ async function runImport() {
     teamCount: number;
     userEmails: string[];
     eventTypeSlugs: string[];
+    existingBookings: ExistingBooking[];
   };
   if (catalog.teamCount !== 1)
     throw new Error(`Expected one team "${teamSlug}" on target, found ${catalog.teamCount}`);
   log(`target: ${catalog.userEmails.length} host users, ${catalog.eventTypeSlugs.length} team event types`);
 
   const plan = buildImportPlan(cache, { teamSlug, ...catalog });
-  console.log(formatPlanReport(plan));
+  console.log(formatPlanReport(plan, planDelta(plan.bookings, catalog.existingBookings)));
 
   // Holds customer PII, so it lives outside the repo with owner-only access.
   const sql = renderImportSql(plan);

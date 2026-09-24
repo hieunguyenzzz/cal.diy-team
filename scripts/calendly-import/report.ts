@@ -1,3 +1,4 @@
+import type { DeltaSummary } from "./delta";
 import type { ImportPlan } from "./types";
 
 const countBy = <T>(items: T[], key: (item: T) => string) => {
@@ -7,13 +8,13 @@ const countBy = <T>(items: T[], key: (item: T) => string) => {
 };
 
 // Counts, slugs and staff mailboxes only: never customer names, emails or answers.
-export function formatPlanReport(plan: ImportPlan): string {
+export function formatPlanReport(plan: ImportPlan, delta: DeltaSummary): string {
   const lines: string[] = [];
   const attendeesPerBooking = countBy(
-    plan.attendees.filter((a) => !a.hostEmail),
+    plan.attendees.filter((a) => !a.hostLocalPart),
     (a) => a.bookingUid
   );
-  const hostAttendees = plan.attendees.filter((a) => a.hostEmail).length;
+  const hostAttendees = plan.attendees.filter((a) => a.hostLocalPart).length;
 
   lines.push(`Team: ${plan.teamSlug}`, `Bookings: ${plan.bookings.length}`);
   for (const [status, count] of countBy(plan.bookings, (b) => b.status)) lines.push(`  ${status}: ${count}`);
@@ -50,8 +51,18 @@ export function formatPlanReport(plan: ImportPlan): string {
   lines.push("", "Host mapping (calendly local-part -> target user | host on events):");
   for (const h of [...plan.hostMappings].sort((a, b) => b.events - a.events)) {
     lines.push(
-      `  ${h.localPart} -> ${h.targetEmail}${h.create ? " (NEW locked user, no team)" : ""} | ${h.events}`
+      `  ${h.localPart} -> ${h.currentEmail ?? `NEW locked user ${h.localPart}@example.com, no team`} | ${h.events}`
     );
   }
+  lines.push(
+    "",
+    "Against the target's current bookings (the SQL applies the same rules and prints its own result: lines):",
+    `  insert new: ${delta.insert}`,
+    `  update to cancelled (status, cancellationReason, cancelledBy only): ${delta.cancel}`,
+    `  cancelled in Calendly but changed in Cal.diy, left alone: ${delta.blockedChangedInCalDiy}`,
+    `  cancelled in Cal.diy but active in Calendly, left alone: ${delta.divergedLeftAlone}`,
+    `  already present, unchanged: ${delta.unchanged}`,
+    `  imported earlier but no longer in Calendly, left alone: ${delta.missingFromCalendly}`
+  );
   return lines.join("\n");
 }

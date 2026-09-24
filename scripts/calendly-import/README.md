@@ -12,9 +12,23 @@ rows. It writes straight to Postgres through `psql`: no web app, no booking hand
    builds the plan (`transform.ts`, pure and unit-tested), prints the report (`report.ts`) and renders one SQL
    file (`render-sql.ts`). `--dry-run` stops there. `--apply` pipes the same SQL through `--psql`.
 
-The SQL runs in one transaction with `ON_ERROR_STOP`. It only inserts (`ON CONFLICT DO NOTHING`), so re-runs
-skip every booking uid that already exists and never touch other bookings. It aborts if the team, a host user or
-a mapped event type is missing.
+The SQL runs in one transaction with `ON_ERROR_STOP`. It aborts if the team, a host user or a mapped event type is
+missing, or if a host local-part matches more than one user.
+
+## Re-runs are a delta sync
+
+Re-run `fetch` then `import` at cut-over to pick up what changed in Calendly since the last run:
+
+- New Calendly events are inserted, with their attendees.
+- An imported booking that is still `accepted` but that Calendly now shows as cancelled gets `status`,
+  `cancellationReason` and `cancelledBy` updated. Nothing else on it changes. Its attendees don't change.
+- A booking the app has changed since import is never touched. Imported rows are written without `updatedAt`,
+  and Prisma sets it on every app update, so `updatedAt IS NOT NULL` means "changed in Cal.diy".
+- Everything else is left alone. That covers bookings cancelled in Cal.diy that are still active in Calendly,
+  bookings that are no longer in Calendly, and bookings not created by this import.
+
+`--dry-run` reads the target's imported bookings and prints the same classification. `--apply` prints the counts
+the SQL actually applied as `result:` lines.
 
 ## Mapping rules
 
@@ -24,7 +38,9 @@ a mapped event type is missing.
 - Event types map by Calendly slug to the team's event types. Unmatched slugs get a hidden collective team event
   type `calendly-archive-<slug>` with no hosts. Event types the token can't read (403) use the event's name and
   duration.
-- Hosts map by email local-part. The first Calendly host becomes `Booking.userId`. The other collective hosts
+- Hosts map by email local-part, and the SQL also joins users by local-part, never by full address. That way
+  switching staff emails from `@example.com` to real addresses keeps every `userId` right, and a re-run doesn't
+  recreate a user whose address has since changed. The first Calendly host becomes `Booking.userId`. The other collective hosts
   become `Attendee` rows, as the app's own `createBooking` stores them. A host with no target user is created as a
   locked, passwordless user `<local-part>@example.com` that belongs to no team.
 - `responses` are `name` and `email`, plus `attendeePhoneNumber` and `guests` where present, plus each Calendly
