@@ -48,7 +48,8 @@ and `left-alone-changed-in-caldiy`.
   switching staff emails from `@example.com` to real addresses keeps every `userId` right, and a re-run doesn't
   recreate a user whose address has since changed. The first Calendly host becomes `Booking.userId`. The other collective hosts
   become `Attendee` rows, as the app's own `createBooking` stores them. A host with no target user is created as a
-  locked, passwordless user `<local-part>@example.com` that belongs to no team.
+  locked, passwordless user with the host's own Calendly email (from `event_memberships.user_email`) that belongs
+  to no team.
 - `responses` are `name` and `email`, plus `attendeePhoneNumber` and `guests` where present, plus each Calendly
   question slugified as a key. The same answers go into `description` as "Question: Answer" lines, which the
   app shows as "Additional notes". It is null when there are no answers, and it is only written on insert. Attendees are the event's invitees (cancelled invitees of active group events are

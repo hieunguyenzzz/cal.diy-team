@@ -54,7 +54,7 @@ export function formatPlanReport(plan: ImportPlan, delta: DeltaSummary): string 
   lines.push("", "Host mapping (calendly local-part -> target user | host on events):");
   for (const h of [...plan.hostMappings].sort((a, b) => b.events - a.events)) {
     lines.push(
-      `  ${h.localPart} -> ${h.currentEmail ?? `NEW locked user ${h.localPart}@example.com, no team`} | ${h.events}`
+      `  ${h.localPart} -> ${h.currentEmail ?? `NEW locked user ${h.calendlyEmail}, no team`} | ${h.events}`
     );
   }
   lines.push(

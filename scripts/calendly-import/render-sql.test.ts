@@ -29,7 +29,7 @@ const plan: ImportPlan = {
   eventTypeMappings: [],
   archiveEventTypes: [{ slug: "calendly-archive-old", title: "Old", length: 30 }],
   hostMappings: [],
-  usersToCreate: [{ email: "new.host@example.com", username: "new.host", name: "New" }],
+  usersToCreate: [{ email: "new.host@calendly.test", username: "new.host", name: "New" }],
   droppedCanceledInvitees: 0,
 };
 
@@ -89,7 +89,7 @@ describe("renderImportSql", () => {
   });
 
   it("creates missing hosts locked and archive event types hidden", () => {
-    expect(sql).toContain("('new.host', 'new.host@example.com', 'New')");
+    expect(sql).toContain("('new.host', 'new.host@calendly.test', 'New')");
     expect(sql).toMatch(
       /INSERT INTO users[\s\S]*WHERE NOT EXISTS \(SELECT 1 FROM users u WHERE split_part\(lower\(u\.email\), '@', 1\) = c\.local_part\)/
     );
