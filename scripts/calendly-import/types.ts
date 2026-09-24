@@ -59,7 +59,12 @@ export type TargetCatalog = {
 };
 
 // Bookings a previous run imported; changedInCalDiy means the app updated the row (updatedAt is set).
-export type ExistingBooking = { uid: string; status: string; changedInCalDiy: boolean };
+export type ExistingBooking = {
+  uid: string;
+  status: string;
+  rescheduled: boolean | null;
+  changedInCalDiy: boolean;
+};
 
 export type BookingRow = {
   uid: string;

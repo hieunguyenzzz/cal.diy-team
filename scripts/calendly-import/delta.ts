@@ -2,6 +2,8 @@ import type { BookingRow, ExistingBooking } from "./types";
 
 export type DeltaSummary = {
   insert: number;
+  // Calendly rescheduled it after the last run and it is still accepted and untouched: rescheduled=true is set.
+  reschedule: number;
   // Imported earlier as accepted, since cancelled in Calendly, untouched in Cal.diy: status and cancellation get updated.
   cancel: number;
   // Same as cancel, but the app has changed the booking since, so the re-run leaves it alone.
@@ -18,6 +20,7 @@ export function planDelta(bookings: BookingRow[], existing: ExistingBooking[]): 
   const existingByUid = new Map(existing.map((booking) => [booking.uid, booking]));
   const summary: DeltaSummary = {
     insert: 0,
+    reschedule: 0,
     cancel: 0,
     blockedChangedInCalDiy: 0,
     divergedLeftAlone: 0,
@@ -27,10 +30,17 @@ export function planDelta(bookings: BookingRow[], existing: ExistingBooking[]): 
 
   for (const booking of bookings) {
     const current = existingByUid.get(booking.uid);
-    if (!current) summary.insert++;
-    else if (current.status === booking.status) summary.unchanged++;
+    if (!current) {
+      summary.insert++;
+      continue;
+    }
+    const untouched = !current.changedInCalDiy;
+    if (booking.rescheduled && current.status === "accepted" && !current.rescheduled && untouched) {
+      summary.reschedule++;
+    }
+    if (current.status === booking.status) summary.unchanged++;
     else if (current.status === "accepted" && booking.status === "cancelled") {
-      if (current.changedInCalDiy) summary.blockedChangedInCalDiy++;
+      if (!untouched) summary.blockedChangedInCalDiy++;
       else summary.cancel++;
     } else summary.divergedLeftAlone++;
   }
