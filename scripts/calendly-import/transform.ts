@@ -19,7 +19,6 @@ const CALENDLY_SLUG_ALIASES: Record<string, string> = {
   beaconsfield: "beaconsfield-berkshire",
   "sbs-remote-tour": "virtual-showroom-tour",
 };
-const MISSING_HOST_DOMAIN = "example.com";
 // Calendly's timezone is optional; Attendee.timeZone is required and the business runs on UK time.
 const FALLBACK_TIME_ZONE = "Europe/London";
 const RESERVED_RESPONSE_KEYS = new Set([
@@ -205,7 +204,12 @@ export function buildImportPlan(cache: CalendlyCache, catalog: TargetCatalog): I
       if (matches.length > 1) {
         throw new CalendlyImportError(`Host "${localPart}" matches ${matches.length} target users`);
       }
-      mapping = { localPart, currentEmail: matches[0] ?? null, events: 0 };
+      mapping = {
+        localPart,
+        calendlyEmail: calendlyEmail.toLowerCase(),
+        currentEmail: matches[0] ?? null,
+        events: 0,
+      };
       hostMappings.set(localPart, mapping);
     }
     mapping.events++;
@@ -284,7 +288,7 @@ export function buildImportPlan(cache: CalendlyCache, catalog: TargetCatalog): I
     usersToCreate: hosts
       .filter((host) => host.currentEmail === null)
       .map((host) => ({
-        email: `${host.localPart}@${MISSING_HOST_DOMAIN}`,
+        email: host.calendlyEmail,
         username: host.localPart,
         name: displayNameFromLocalPart(host.localPart),
       })),

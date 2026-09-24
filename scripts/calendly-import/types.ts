@@ -111,8 +111,13 @@ export type EventTypeMapping = {
   bookings: number;
 };
 
-// currentEmail is only for the report; null means the import creates the user.
-export type HostMapping = { localPart: string; currentEmail: string | null; events: number };
+// currentEmail is the matched target user (null: the import creates one with calendlyEmail).
+export type HostMapping = {
+  localPart: string;
+  calendlyEmail: string;
+  currentEmail: string | null;
+  events: number;
+};
 
 export type ImportPlan = {
   teamSlug: string;
