@@ -63,8 +63,6 @@ jobs:
             NEXT_PUBLIC_LICENSE_CONSENT=agree
             NEXT_PUBLIC_API_V2_URL=http://localhost:5555/api/v2
             DATABASE_URL=postgresql://postgres:postgres@localhost:5432/calcom
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   deploy:
     name: "Trigger Dokploy deploy"
