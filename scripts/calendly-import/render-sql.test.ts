@@ -42,6 +42,18 @@ describe("renderImportSql", () => {
     expect(sql).toContain("'O''Brien''s Tour'");
     expect(sql).toContain("'2024-03-01 10:00:00.000'");
     expect(sqlLiteral(null)).toBe("NULL");
+    expect(sqlLiteral(30)).toBe("30");
+  });
+
+  it("refuses to render NaN or Infinity", () => {
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(() => sqlLiteral(value)).toThrow(/non-finite/);
+    }
+    const badLength = {
+      ...plan,
+      archiveEventTypes: [{ slug: "calendly-archive-x", title: "X", length: Number.NaN }],
+    };
+    expect(() => renderImportSql(badLength)).toThrow(/non-finite/);
   });
 
   it("runs in one transaction that stops on the first error and never deletes", () => {

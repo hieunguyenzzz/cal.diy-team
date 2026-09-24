@@ -38,7 +38,10 @@ const guard = (condition: string, message: string) =>
 
 export const sqlLiteral = (value: string | number | boolean | null): string => {
   if (value === null) return "NULL";
-  if (typeof value === "number") return String(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error(`Refusing to render non-finite number ${value} into SQL`);
+    return String(value);
+  }
   if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
   return `'${value.replaceAll(NUL, "").replace(/'/g, "''")}'`;
 };
