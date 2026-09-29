@@ -1,7 +1,11 @@
 import short from "short-uuid";
 import { v4 as uuidv4 } from "uuid";
 
-import { APP_NAME } from "@calcom/lib/constants";
+import { WEBAPP_URL } from "@calcom/lib/constants";
+
+// RFC 5545 recommends a domain on the right of "@". APP_NAME can contain spaces
+// (e.g. "SoundBox Store"), which calendar providers may reject in an iCalUID.
+const UID_DOMAIN: string = new URL(WEBAPP_URL).hostname;
 
 /**
  * This function returns the iCalUID if a uid is passed or if it is present in the event that is passed
@@ -25,14 +29,14 @@ const getICalUID = ({
 }) => {
   if (event?.iCalUID) return event.iCalUID;
 
-  if (defaultToEventUid && event?.uid) return `${event.uid}@${APP_NAME}`;
+  if (defaultToEventUid && event?.uid) return `${event.uid}@${UID_DOMAIN}`;
 
-  if (uid) return `${uid}@${APP_NAME}`;
+  if (uid) return `${uid}@${UID_DOMAIN}`;
 
   const translator = short();
 
   uid = translator.fromUUID(uuidv4());
-  return `${uid}${attendeeId ? `${attendeeId}` : ""}@${APP_NAME}`;
+  return `${uid}${attendeeId ? `${attendeeId}` : ""}@${UID_DOMAIN}`;
 };
 
 export default getICalUID;
