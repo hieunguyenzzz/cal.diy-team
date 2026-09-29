@@ -19,7 +19,7 @@ describe("/api/trpc/slots/[trpc]", () => {
 
   it("adds CORS for an allowed storefront origin on getSchedule and still runs tRPC", async () => {
     vi.stubEnv("STOREFRONT_ALLOWED_ORIGINS", "https://soundboxstore.com");
-    const { default: handler } = await import("./[trpc]");
+    const { default: handler } = await import("../../pages/api/trpc/slots/[trpc]");
     const { req, res } = createMocks<NextApiRequest, NextApiResponse>({
       method: "GET",
       query: { trpc: "getSchedule" },
@@ -33,7 +33,7 @@ describe("/api/trpc/slots/[trpc]", () => {
 
   it("does not add CORS for a disallowed origin", async () => {
     vi.stubEnv("STOREFRONT_ALLOWED_ORIGINS", "https://soundboxstore.com");
-    const { default: handler } = await import("./[trpc]");
+    const { default: handler } = await import("../../pages/api/trpc/slots/[trpc]");
     const { req, res } = createMocks<NextApiRequest, NextApiResponse>({
       method: "GET",
       query: { trpc: "getSchedule" },

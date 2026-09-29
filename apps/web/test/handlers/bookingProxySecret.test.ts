@@ -36,7 +36,9 @@ const SECRET = "test-proxy-secret-abcd";
 
 async function post(route: "event" | "recurring-event", headers: Record<string, string>) {
   const { default: handler } =
-    route === "event" ? await import("./event") : await import("./recurring-event");
+    route === "event"
+      ? await import("../../pages/api/book/event")
+      : await import("../../pages/api/book/recurring-event");
   const body = route === "event" ? { eventTypeId: 1 } : [{ eventTypeId: 1 }];
   const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method: "POST", headers, body });
   await handler(req, res);
