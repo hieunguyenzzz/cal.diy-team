@@ -51,6 +51,8 @@ jobs:
       # Build-only values. These are never used at runtime - Dokploy's own
       # env vars (real secrets) are injected into the running container, and
       # scripts/start.sh rewrites the baked NEXT_PUBLIC_WEBAPP_URL at boot.
+      # The NEXT_PUBLIC_* brand values are the exception: Next.js inlines them
+      # at build time, so they must be set here to reach emails and the UI.
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
@@ -63,6 +65,10 @@ jobs:
             NEXT_PUBLIC_LICENSE_CONSENT=agree
             NEXT_PUBLIC_API_V2_URL=http://localhost:5555/api/v2
             DATABASE_URL=postgresql://postgres:postgres@localhost:5432/calcom
+            NEXT_PUBLIC_APP_NAME=SoundBox Store
+            NEXT_PUBLIC_COMPANY_NAME=SoundBox Store
+            NEXT_PUBLIC_SUPPORT_MAIL_ADDRESS=hush@soundboxstore.com
+            NEXT_PUBLIC_SENDGRID_SENDER_NAME=SoundBox Store
 
   deploy:
     name: "Trigger Dokploy deploy"
