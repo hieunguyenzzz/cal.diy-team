@@ -21,8 +21,9 @@ import { getMockRequestDataForBooking } from "@calcom/testing/lib/bookingScenari
 import { setupAndTeardown } from "@calcom/testing/lib/bookingScenario/setupAndTeardown";
 
 import { v4 as uuidv4 } from "uuid";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 
+import { BookingEmailSmsHandler } from "@calcom/features/bookings/lib/BookingEmailSmsHandler";
 import { WEBAPP_URL, WEBSITE_URL } from "@calcom/lib/constants";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import logger from "@calcom/lib/logger";
@@ -33,6 +34,18 @@ const DAY_IN_MS = 1000 * 60 * 60 * 24;
 
 function getPlusDayDate(date: string, days: number) {
   return new Date(new Date(date).getTime() + days * DAY_IN_MS);
+}
+
+// Booking emails are sent without being awaited, so wait for them before asserting on them.
+async function withPendingEmailsSent<T>(run: () => Promise<T>): Promise<T> {
+  const sendSpy = vi.spyOn(BookingEmailSmsHandler.prototype, "send");
+  try {
+    const result = await run();
+    await Promise.allSettled(sendSpy.mock.results.map((result) => result.value));
+    return result;
+  } finally {
+    sendSpy.mockRestore();
+  }
 }
 
 // Local test runs sometime gets too slow
@@ -156,7 +169,7 @@ describe("handleNewBooking", () => {
               }),
           });
 
-          const createdBookings = await handleRecurringEventBooking(req);
+          const createdBookings = await withPendingEmailsSent(() => handleRecurringEventBooking(req));
           expect(createdBookings.length).toBe(numOfSlotsToBeBooked);
           for (const [index, createdBooking] of Object.entries(createdBookings)) {
             logger.debug("Assertion for Booking with index:", index, { createdBooking });
@@ -503,7 +516,7 @@ describe("handleNewBooking", () => {
               }),
           });
 
-          const createdBookings = await handleRecurringEventBooking(req);
+          const createdBookings = await withPendingEmailsSent(() => handleRecurringEventBooking(req));
           expect(createdBookings.length).toBe(numOfSlotsToBeBooked);
           for (const [index, createdBooking] of Object.entries(createdBookings)) {
             logger.debug("Assertion for Booking with index:", index, { createdBooking });
@@ -719,7 +732,7 @@ describe("handleNewBooking", () => {
               }),
           });
 
-          const createdBookings = await handleRecurringEventBooking(req);
+          const createdBookings = await withPendingEmailsSent(() => handleRecurringEventBooking(req));
           expect(createdBookings.length).toBe(numOfSlotsToBeBooked);
           for (const [index, createdBooking] of Object.entries(createdBookings)) {
             logger.debug("Assertion for Booking with index:", index, { createdBooking });
