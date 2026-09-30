@@ -2028,21 +2028,27 @@ async function handler(
     evt.appsStatus = handleAppsStatus(results, booking, reqAppsStatus);
 
     if (!noEmail && isConfirmedByDefault && !isDryRun) {
-      await emailsAndSmsHandler.send({
-        action: BookingActionMap.rescheduled,
-        data: {
-          evt,
-          eventType,
-          additionalInformation: metadata,
-          additionalNotes,
-          iCalUID,
-          originalRescheduledBooking,
-          rescheduleReason,
-          isRescheduledByBooker: reqBody.rescheduledBy === bookerEmail,
-          users,
-          changedOrganizer,
-        },
-      });
+      // Not awaited: SMTP sends took ~6s and the booking is already committed, so the booker
+      // shouldn't wait on them. We run on a long-lived Node server, so the promise still completes.
+      emailsAndSmsHandler
+        .send({
+          action: BookingActionMap.rescheduled,
+          data: {
+            evt,
+            eventType,
+            additionalInformation: metadata,
+            additionalNotes,
+            iCalUID,
+            originalRescheduledBooking,
+            rescheduleReason,
+            isRescheduledByBooker: reqBody.rescheduledBy === bookerEmail,
+            users,
+            changedOrganizer,
+          },
+        })
+        .catch((error) =>
+          tracingLogger.error(`Error sending rescheduled booking emails: bookingUid: ${booking.uid}`, error)
+        );
       bookingEmailsAndSmsTaskerAction = BookingActionMap.rescheduled;
     }
     // If it's not a reschedule, doesn't require confirmation and there's no price,
@@ -2150,20 +2156,25 @@ async function handler(
       }
       if (!noEmail) {
         if (!isDryRun && !(eventType.seatsPerTimeSlot && rescheduleUid)) {
-          await emailsAndSmsHandler.send({
-            action: BookingActionMap.confirmed,
-            data: {
-              eventType: {
-                metadata: eventType.metadata,
-                schedulingType: eventType.schedulingType,
+          // Not awaited, see the rescheduled branch above.
+          emailsAndSmsHandler
+            .send({
+              action: BookingActionMap.confirmed,
+              data: {
+                eventType: {
+                  metadata: eventType.metadata,
+                  schedulingType: eventType.schedulingType,
+                },
+                eventNameObject,
+                evt,
+                additionalInformation,
+                additionalNotes,
+                customInputs,
               },
-              eventNameObject,
-              evt,
-              additionalInformation,
-              additionalNotes,
-              customInputs,
-            },
-          });
+            })
+            .catch((error) =>
+              tracingLogger.error(`Error sending confirmed booking emails: bookingUid: ${booking.uid}`, error)
+            );
           bookingEmailsAndSmsTaskerAction = BookingActionMap.confirmed;
         }
       }
@@ -2194,10 +2205,15 @@ async function handler(
       })
     );
     if (!isDryRun) {
-      await emailsAndSmsHandler.send({
-        action: BookingActionMap.requested,
-        data: { evt, attendees: attendeesList, eventType, additionalNotes },
-      });
+      // Not awaited, see the rescheduled branch above.
+      emailsAndSmsHandler
+        .send({
+          action: BookingActionMap.requested,
+          data: { evt, attendees: attendeesList, eventType, additionalNotes },
+        })
+        .catch((error) =>
+          tracingLogger.error(`Error sending requested booking emails: bookingUid: ${booking.uid}`, error)
+        );
       bookingEmailsAndSmsTaskerAction = BookingActionMap.requested;
     }
   }

@@ -19,9 +19,10 @@ import { getMockRequestDataForBooking } from "@calcom/testing/lib/bookingScenari
 import { setupAndTeardown } from "@calcom/testing/lib/bookingScenario/setupAndTeardown";
 
 import { v4 as uuidv4 } from "uuid";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 import { getRecurringBookingService } from "@calcom/features/bookings/di/RecurringBookingService.container";
+import { BookingEmailSmsHandler } from "@calcom/features/bookings/lib/BookingEmailSmsHandler";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import logger from "@calcom/lib/logger";
 import { BookingStatus } from "@calcom/prisma/enums";
@@ -152,6 +153,8 @@ describe("handleNewRecurringBooking", () => {
             });
 
           const recurringBookingService = getRecurringBookingService();
+          // Booking emails are sent without being awaited, so wait for them before asserting on them.
+          const sendSpy = vi.spyOn(BookingEmailSmsHandler.prototype, "send");
           // Call handleNewRecurringBooking directly instead of through API
           const createdBookings = await recurringBookingService.createBooking({
             bookingData: bookingDataArray,
@@ -160,6 +163,8 @@ describe("handleNewRecurringBooking", () => {
             },
             creationSource: "WEBAPP",
           });
+          await Promise.allSettled(sendSpy.mock.results.map((result) => result.value));
+          sendSpy.mockRestore();
 
           expect(createdBookings.length).toBe(numOfSlotsToBeBooked);
           for (const [index, createdBooking] of Object.entries(createdBookings)) {
