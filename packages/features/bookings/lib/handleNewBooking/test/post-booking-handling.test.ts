@@ -24,6 +24,7 @@ import type { Request, Response } from "express";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { describe, expect, beforeEach, vi, test } from "vitest";
 
+import { BookingEmailSmsHandler } from "@calcom/features/bookings/lib/BookingEmailSmsHandler";
 import { resetTestEmails } from "@calcom/lib/testEmails";
 import { BookingStatus } from "@calcom/prisma/enums";
 
@@ -470,4 +471,83 @@ describe("Post-Booking Events - Hashed Link Usage", () => {
       timeout
     );
   });
+});
+
+describe("Post-Booking Emails", () => {
+  setupAndTeardown();
+  beforeEach(() => {
+    resetTestEmails();
+    vi.clearAllMocks();
+  });
+
+  // Calls the service directly: getNewBookingHandler waits for pending emails, which would hide the behaviour under test.
+  async function createConfirmedBooking() {
+    const { getRegularBookingService } = await import(
+      "@calcom/features/bookings/di/RegularBookingService.container"
+    );
+    const booker = getBooker({ email: "booker@example.com", name: "Booker" });
+    const organizer = getOrganizer({
+      name: "Organizer",
+      email: "organizer@example.com",
+      id: 101,
+      schedules: [TestData.schedules.IstWorkHours],
+      credentials: [getGoogleCalendarCredential()],
+      selectedCalendars: [TestData.selectedCalendars.google],
+    });
+
+    await createBookingScenario(
+      getScenarioData({
+        eventTypes: [{ id: 1, slotInterval: 45, length: 30, users: [{ id: 101 }] }],
+        users: [organizer],
+      })
+    );
+    mockCalendarToHaveNoBusySlots("googlecalendar", {
+      create: { uid: "EMAIL_BOOKING_UID" },
+    });
+
+    return getRegularBookingService().createBooking({
+      bookingData: getMockRequestDataForBooking({
+        data: {
+          eventTypeId: 1,
+          responses: {
+            email: booker.email,
+            name: booker.name,
+            location: { optionValue: "", value: BookingLocations.CalVideo },
+          },
+        },
+      }),
+    });
+  }
+
+  test(
+    "should return the booking without waiting for confirmation emails to be sent",
+    async () => {
+      const sendSpy = vi
+        .spyOn(BookingEmailSmsHandler.prototype, "send")
+        .mockReturnValue(new Promise<undefined>(() => {}));
+
+      const bookingResponse = await createConfirmedBooking();
+
+      expect(sendSpy).toHaveBeenCalledWith(expect.objectContaining({ action: "BOOKING_CONFIRMED" }));
+      expect(bookingResponse.status).toEqual(BookingStatus.ACCEPTED);
+      sendSpy.mockRestore();
+    },
+    timeout
+  );
+
+  test(
+    "should still return the booking when sending confirmation emails fails",
+    async () => {
+      const sendSpy = vi
+        .spyOn(BookingEmailSmsHandler.prototype, "send")
+        .mockRejectedValue(new Error("SMTP unavailable"));
+
+      const bookingResponse = await createConfirmedBooking();
+
+      expect(sendSpy).toHaveBeenCalled();
+      expect(bookingResponse.status).toEqual(BookingStatus.ACCEPTED);
+      sendSpy.mockRestore();
+    },
+    timeout
+  );
 });
