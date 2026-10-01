@@ -8,8 +8,10 @@ import { serverConfig } from "@calcom/lib/serverConfig";
 import { getServerErrorFromUnknown } from "@calcom/lib/server/getServerErrorFromUnknown";
 import { setTestEmail } from "@calcom/lib/testEmails";
 import { prisma } from "@calcom/prisma";
+import type { CalendarEvent } from "@calcom/types/Calendar";
 
 import { sanitizeDisplayName } from "../lib/sanitizeDisplayName";
+import { applyTeamSender } from "../lib/teamSender";
 
 export default class BaseEmail {
   name = "";
@@ -50,7 +52,11 @@ export default class BaseEmail {
 
     const payload = await this.getNodeMailerPayload();
 
-    const from = "from" in payload ? (payload.from as string) : "";
+    const payloadFrom = "from" in payload ? (payload.from as string) : "";
+    const teamId = (this as { calEvent?: CalendarEvent }).calEvent?.team?.id;
+    const teamFrom = applyTeamSender(payloadFrom, teamId);
+    if (teamFrom) console.log(`[email-sender] team=${teamId} override applied template=${this.name}`);
+    const from = teamFrom ?? payloadFrom;
     const to = "to" in payload ? (payload.to as string) : "";
 
     if (isSmsCalEmail(to)) {
