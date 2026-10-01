@@ -1835,7 +1835,143 @@ async function handler(
       ? new EventManager({ ...organizerUser, credentials }, apps)
       : buildDryRunEventManager();
 
-  let videoCallUrl;
+  let videoCallUrl: string | null | undefined;
+
+  // SBS-618: with BOOKING_ASYNC_INTEGRATIONS=true, plain new bookings respond once the booking row is saved.
+  // The video meeting (a Teams meeting via Graph took ~10s), references and confirmation emails then run in the background.
+  const runIntegrationsInBackground =
+    process.env.BOOKING_ASYNC_INTEGRATIONS === "true" &&
+    isConfirmedByDefault &&
+    !isDryRun &&
+    !originalRescheduledBooking &&
+    !rescheduleUid &&
+    !eventType.seatsPerTimeSlot &&
+    !reqBody.recurringEventId &&
+    !input.bookingData.allRecurringDates &&
+    !(paymentAppData.price > 0);
+
+  // Creates the calendar events and video meeting of a new confirmed booking. Returns null when every integration failed.
+  const createEventsForNewBooking = async (): Promise<AdditionalInformation | null> => {
+    const shouldSkipCalendarEvents = !areCalendarEventsEnabled || skipCalendarSyncTaskCreation;
+    const createManager = await eventManager.create(evt, { skipCalendarEvent: shouldSkipCalendarEvents });
+    if (evt.location) {
+      booking.location = evt.location;
+    }
+    // This gets overridden when creating the event - to check if notes have been hidden or not. We just reset this back
+    // to the default description when we are sending the emails.
+    evt.description = eventType.description;
+
+    results = createManager.results;
+    referencesToCreate = createManager.referencesToCreate;
+    videoCallUrl = evt.videoCallData?.url ? evt.videoCallData.url : null;
+
+    if (results.length > 0 && results.every((res) => !res.success)) {
+      const error = {
+        errorCode: "BookingCreatingMeetingFailed",
+        message: "Booking failed",
+      };
+
+      tracingLogger.error(
+        `EventManager.create failure in some of the integrations ${organizerUser.username}`,
+        safeStringify({ error, results })
+      );
+    } else {
+      const additionalInformation: AdditionalInformation = {};
+
+      if (results.length) {
+        // Handle Google Meet results
+        // We use the original booking location since the evt location changes to daily
+        if (bookingLocation === MeetLocationType) {
+          const googleMeetResult = {
+            appName: GoogleMeetMetadata.name,
+            type: "conferencing",
+            uid: results[0].uid,
+            originalEvent: results[0].originalEvent,
+          };
+
+          // Find index of google_calendar inside createManager.referencesToCreate
+          const googleCalIndex = createManager.referencesToCreate.findIndex(
+            (ref) => ref.type === "google_calendar"
+          );
+          const googleCalResult = results[googleCalIndex];
+
+          if (!googleCalResult) {
+            tracingLogger.warn("Google Calendar not installed but using Google Meet as location");
+            results.push({
+              ...googleMeetResult,
+              success: false,
+              calWarnings: [tOrganizer("google_meet_warning")],
+            });
+          }
+
+          if (googleCalResult?.createdEvent?.hangoutLink) {
+            results.push({
+              ...googleMeetResult,
+              success: true,
+            });
+
+            // Add google_meet to referencesToCreate in the same index as google_calendar
+            createManager.referencesToCreate[googleCalIndex] = {
+              ...createManager.referencesToCreate[googleCalIndex],
+              meetingUrl: googleCalResult.createdEvent.hangoutLink,
+            };
+
+            // Also create a new referenceToCreate with type video for google_meet
+            createManager.referencesToCreate.push({
+              type: "google_meet_video",
+              meetingUrl: googleCalResult.createdEvent.hangoutLink,
+              uid: googleCalResult.uid,
+              credentialId: createManager.referencesToCreate[googleCalIndex].credentialId,
+            });
+          } else if (googleCalResult && !googleCalResult.createdEvent?.hangoutLink) {
+            results.push({
+              ...googleMeetResult,
+              success: false,
+            });
+          }
+        }
+        // TODO: Handle created event metadata more elegantly
+        additionalInformation.hangoutLink = results[0].createdEvent?.hangoutLink;
+        additionalInformation.conferenceData = results[0].createdEvent?.conferenceData;
+        additionalInformation.entryPoints = results[0].createdEvent?.entryPoints;
+        evt.appsStatus = handleAppsStatus(results, booking, reqAppsStatus);
+        videoCallUrl =
+          additionalInformation.hangoutLink ||
+          organizerOrFirstDynamicGroupMemberDefaultLocationUrl ||
+          videoCallUrl;
+
+        if (!isDryRun && evt.iCalUID !== booking.iCalUID) {
+          // The eventManager could change the iCalUID. At this point we can update the DB record
+          await deps.prismaClient.booking.update({
+            where: {
+              id: booking.id,
+            },
+            data: {
+              iCalUID: evt.iCalUID || booking.iCalUID,
+            },
+          });
+        }
+      }
+      return additionalInformation;
+    }
+    return null;
+  };
+
+  const sendConfirmedEmails = (additionalInformation: AdditionalInformation) =>
+    emailsAndSmsHandler.send({
+      action: BookingActionMap.confirmed,
+      data: {
+        eventType: {
+          metadata: eventType.metadata,
+          schedulingType: eventType.schedulingType,
+        },
+        eventNameObject,
+        evt,
+        additionalInformation,
+        additionalNotes,
+        customInputs,
+      },
+    });
 
   // this is the actual rescheduling logic
   if (!eventType.seatsPerTimeSlot && originalRescheduledBooking?.uid) {
@@ -2053,130 +2189,19 @@ async function handler(
     }
     // If it's not a reschedule, doesn't require confirmation and there's no price,
     // Create a booking
+  } else if (runIntegrationsInBackground) {
+    tracingLogger.info(
+      `[async-integrations] uid=${booking.uid} deferring calendar/video creation and emails`
+    );
   } else if (isConfirmedByDefault) {
-    const shouldSkipCalendarEvents = !areCalendarEventsEnabled || skipCalendarSyncTaskCreation;
-    const createManager = await eventManager.create(evt, { skipCalendarEvent: shouldSkipCalendarEvents });
-    if (evt.location) {
-      booking.location = evt.location;
-    }
-    // This gets overridden when creating the event - to check if notes have been hidden or not. We just reset this back
-    // to the default description when we are sending the emails.
-    evt.description = eventType.description;
-
-    results = createManager.results;
-    referencesToCreate = createManager.referencesToCreate;
-    videoCallUrl = evt.videoCallData?.url ? evt.videoCallData.url : null;
-
-    if (results.length > 0 && results.every((res) => !res.success)) {
-      const error = {
-        errorCode: "BookingCreatingMeetingFailed",
-        message: "Booking failed",
-      };
-
-      tracingLogger.error(
-        `EventManager.create failure in some of the integrations ${organizerUser.username}`,
-        safeStringify({ error, results })
-      );
-    } else {
-      const additionalInformation: AdditionalInformation = {};
-
-      if (results.length) {
-        // Handle Google Meet results
-        // We use the original booking location since the evt location changes to daily
-        if (bookingLocation === MeetLocationType) {
-          const googleMeetResult = {
-            appName: GoogleMeetMetadata.name,
-            type: "conferencing",
-            uid: results[0].uid,
-            originalEvent: results[0].originalEvent,
-          };
-
-          // Find index of google_calendar inside createManager.referencesToCreate
-          const googleCalIndex = createManager.referencesToCreate.findIndex(
-            (ref) => ref.type === "google_calendar"
-          );
-          const googleCalResult = results[googleCalIndex];
-
-          if (!googleCalResult) {
-            tracingLogger.warn("Google Calendar not installed but using Google Meet as location");
-            results.push({
-              ...googleMeetResult,
-              success: false,
-              calWarnings: [tOrganizer("google_meet_warning")],
-            });
-          }
-
-          if (googleCalResult?.createdEvent?.hangoutLink) {
-            results.push({
-              ...googleMeetResult,
-              success: true,
-            });
-
-            // Add google_meet to referencesToCreate in the same index as google_calendar
-            createManager.referencesToCreate[googleCalIndex] = {
-              ...createManager.referencesToCreate[googleCalIndex],
-              meetingUrl: googleCalResult.createdEvent.hangoutLink,
-            };
-
-            // Also create a new referenceToCreate with type video for google_meet
-            createManager.referencesToCreate.push({
-              type: "google_meet_video",
-              meetingUrl: googleCalResult.createdEvent.hangoutLink,
-              uid: googleCalResult.uid,
-              credentialId: createManager.referencesToCreate[googleCalIndex].credentialId,
-            });
-          } else if (googleCalResult && !googleCalResult.createdEvent?.hangoutLink) {
-            results.push({
-              ...googleMeetResult,
-              success: false,
-            });
-          }
-        }
-        // TODO: Handle created event metadata more elegantly
-        additionalInformation.hangoutLink = results[0].createdEvent?.hangoutLink;
-        additionalInformation.conferenceData = results[0].createdEvent?.conferenceData;
-        additionalInformation.entryPoints = results[0].createdEvent?.entryPoints;
-        evt.appsStatus = handleAppsStatus(results, booking, reqAppsStatus);
-        videoCallUrl =
-          additionalInformation.hangoutLink ||
-          organizerOrFirstDynamicGroupMemberDefaultLocationUrl ||
-          videoCallUrl;
-
-        if (!isDryRun && evt.iCalUID !== booking.iCalUID) {
-          // The eventManager could change the iCalUID. At this point we can update the DB record
-          await deps.prismaClient.booking.update({
-            where: {
-              id: booking.id,
-            },
-            data: {
-              iCalUID: evt.iCalUID || booking.iCalUID,
-            },
-          });
-        }
-      }
-      if (!noEmail) {
-        if (!isDryRun && !(eventType.seatsPerTimeSlot && rescheduleUid)) {
-          // Not awaited, see the rescheduled branch above.
-          emailsAndSmsHandler
-            .send({
-              action: BookingActionMap.confirmed,
-              data: {
-                eventType: {
-                  metadata: eventType.metadata,
-                  schedulingType: eventType.schedulingType,
-                },
-                eventNameObject,
-                evt,
-                additionalInformation,
-                additionalNotes,
-                customInputs,
-              },
-            })
-            .catch((error) =>
-              tracingLogger.error(`Error sending confirmed booking emails: bookingUid: ${booking.uid}`, error)
-            );
-          bookingEmailsAndSmsTaskerAction = BookingActionMap.confirmed;
-        }
+    const additionalInformation = await createEventsForNewBooking();
+    if (additionalInformation && !noEmail) {
+      if (!isDryRun && !(eventType.seatsPerTimeSlot && rescheduleUid)) {
+        // Not awaited, see the rescheduled branch above.
+        sendConfirmedEmails(additionalInformation).catch((error) =>
+          tracingLogger.error(`Error sending confirmed booking emails: bookingUid: ${booking.uid}`, error)
+        );
+        bookingEmailsAndSmsTaskerAction = BookingActionMap.confirmed;
       }
     }
   } else {
@@ -2218,15 +2243,19 @@ async function handler(
     }
   }
 
-  if (booking.location?.startsWith("http")) {
-    videoCallUrl = booking.location;
-  }
+  const buildVideoCallMetadata = () => {
+    if (booking.location?.startsWith("http")) {
+      videoCallUrl = booking.location;
+    }
 
-  const metadata = videoCallUrl
-    ? {
-        videoCallUrl: getVideoCallUrlFromCalEvent(evt) || videoCallUrl,
-      }
-    : undefined;
+    return videoCallUrl
+      ? {
+          videoCallUrl: getVideoCallUrlFromCalEvent(evt) || videoCallUrl,
+        }
+      : undefined;
+  };
+
+  const metadata = buildVideoCallMetadata();
 
   const isBookingEmailSmsTaskerEnabled = false;
 
@@ -2575,7 +2604,7 @@ async function handler(
     paymentRequired: false,
   };
 
-  return {
+  const response = {
     ...bookingResponse,
     ...luckyUserResponse,
     isDryRun,
@@ -2591,6 +2620,48 @@ async function handler(
         }
       : null,
   };
+
+  if (runIntegrationsInBackground) {
+    // Not awaited: same order as the synchronous path (meeting -> references/metadata -> emails),
+    // but after the response. We run on a long-lived Node server, so the promise still completes.
+    const bookingUid = booking.uid;
+    const startedAt = Date.now();
+    let stage = "create";
+    const logStageError = (error: unknown) =>
+      tracingLogger.error(
+        `[async-integrations] uid=${bookingUid} stage=${stage} error=${error instanceof Error ? error.message : String(error)}`,
+        safeStringify(error)
+      );
+    const runIntegrations = async () => {
+      const additionalInformation = await createEventsForNewBooking();
+      stage = "references";
+      const backgroundMetadata = buildVideoCallMetadata();
+      try {
+        await deps.prismaClient.booking.update({
+          where: { uid: bookingUid },
+          data: {
+            location: evt.location,
+            metadata: {
+              ...(typeof booking.metadata === "object" && booking.metadata),
+              ...backgroundMetadata,
+            },
+            references: { createMany: { data: referencesToCreate } },
+          },
+        });
+      } catch (error) {
+        // Still send the emails, as the synchronous path does when this write fails.
+        logStageError(error);
+      }
+      if (additionalInformation && !noEmail) {
+        stage = "emails";
+        await sendConfirmedEmails(additionalInformation);
+      }
+      tracingLogger.info(`[async-integrations] uid=${bookingUid} done ms=${Date.now() - startedAt}`);
+    };
+    runIntegrations().catch(logStageError);
+  }
+
+  return response;
 }
 
 /**
