@@ -2190,7 +2190,7 @@ async function handler(
     // If it's not a reschedule, doesn't require confirmation and there's no price,
     // Create a booking
   } else if (runIntegrationsInBackground) {
-    tracingLogger.debug(
+    tracingLogger.info(
       `[async-integrations] uid=${booking.uid} deferring calendar/video creation and emails`
     );
   } else if (isConfirmedByDefault) {
